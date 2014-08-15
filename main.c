@@ -139,7 +139,7 @@ int next_char(int fd)
     int r=read(fd,(char *)buffer,1);
     if (r==1) {
       return buffer[0];
-    } else usleep(100000);
+    } else sleep(0);
   }
   return -1;
 }
@@ -165,12 +165,82 @@ void expect_ok(int fd)
 
 void set_flash_addr(int fd,int addr)
 {
+  unsigned char cmd[8];
+  cmd[0]=LOAD_ADDRESS;
+  cmd[1]=addr&0xff;
+  cmd[2]=(addr>>8)&0xff;
+  cmd[3]=EOC;
+  write(fd,cmd,4);
+  expect_insync(fd);
+  expect_ok(fd);
 }
 
 void read_flash(int fd,unsigned char *buffer,int length)
 {
+  unsigned char cmd[8];
+  cmd[0]=READ_MULTI;
+  cmd[1]=length;
+  cmd[2]=EOC;
+  write(fd,cmd,3);
+  int i;
+  for(i=0;i<length;i++) {
+    buffer[i]=next_char(fd);
+  }
+  expect_insync(fd);
+  expect_ok(fd);  
 }
 
+int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
+{
+  int i;
+  for(i=0;i<ihex->ihrs_count;i++)
+    if (ihex->ihrs_records[i].ihr_type==0x00)
+      {
+	int j;
+	// write 16 bytes at a time
+	for(j=0;j<ihex->ihrs_records[i].ihr_length;j+=16)
+	  {
+	    // work out how big this piece is
+	    int length=32;
+	    if (j+length>ihex->ihrs_records[i].ihr_length)
+	      length=ihex->ihrs_records[i].ihr_length-j;
+	    
+	    printf("\rRange $%04x - $%04x",
+		   ihex->ihrs_records[i].ihr_address+j,
+		   ihex->ihrs_records[i].ihr_address+j+length-1);
+	    fflush(stdout);
+
+	    if (writeP) {
+	      // XXX Write to flash
+
+	    }
+	    
+	    // Read back from flash and verify
+	    unsigned char buffer[length];
+	    set_flash_addr(fd,ihex->ihrs_records[i].ihr_address+j);
+	    read_flash(fd,buffer,length);
+	    int k;
+	    for(k=0;k<length;k++)
+	      if (ihex->ihrs_records[i].ihr_data[j+k]
+		  !=buffer[k])
+		{
+		  // Verify error
+		  if (writeP) {
+		    fprintf(stderr,"Verify error at $%04x"
+			    " : expected $%02x, but read $%02x\n",
+			    ihex->ihrs_records[i].ihr_address+j+k,
+			    ihex->ihrs_records[i].ihr_data[j+k],buffer[k]);
+		    write(fd,"0",1);
+		    exit(-4);
+		  }
+		  else return -1;
+		}
+	  }
+      }
+  return 0;
+}
+  
+  
 int main(int argc,char **argv)
 {
   if (argc!=3) {
@@ -183,40 +253,9 @@ int main(int argc,char **argv)
     fprintf(stderr,"Could not read intelhex from file '%s'\n",argv[1]);
     exit(-2);
   }
-  printf("Read %d records\n",ihex->ihrs_count);
+  printf("Read %d IHEX records from firmware file\n",ihex->ihrs_count);
 
   int i;
-  int last_start=-1;
-  int last_next=-1;
-  for(i=0;i<ihex->ihrs_count;i++)
-    {
-      if (ihex->ihrs_records[i].ihr_address==last_next)
-	{
-	  last_next=ihex->ihrs_records[i].ihr_address
-	    +ihex->ihrs_records[i].ihr_length;
-	  if (0) printf("    appending %d bytes: $%04x - $%04x, start=$%04x\n",
-		 ihex->ihrs_records[i].ihr_length,
-		 ihex->ihrs_records[i].ihr_address,
-		 ihex->ihrs_records[i].ihr_address
-		 +ihex->ihrs_records[i].ihr_length,
-		 last_start
-		 );
-	}
-      else
-	{
-	  if (last_start!=-1) {
-	    printf("  $%04x-$%04x %d\n",
-		   last_start,last_next,last_next-last_start);
-	  }
-	  last_start=ihex->ihrs_records[i].ihr_address;
-	  last_next=ihex->ihrs_records[i].ihr_address
-	    +ihex->ihrs_records[i].ihr_length;
-	}
-    }
-  if (last_start!=-1) {
-    printf("  $%04x-$%04x %d\n",
-		   last_start,last_next,last_next-last_start);
-  }
 
   int fd=open(argv[2],O_RDWR);
   if (fd==-1) {
@@ -303,44 +342,17 @@ int main(int argc,char **argv)
 
       printf("Erased parameters.\n");
 
-      // XXX Erase ROM
-
       // Program all parts of the firmware and verify that that got written
-      for(i=0;i<ihex->ihrs_count;i++)
-	if (ihex->ihrs_records[i].ihr_type==0x00)
-	  {
-	    printf("Preparing to write %d bytes\n",
-		   ihex->ihrs_records[i].ihr_length);
-	    int j;
-	    // write 16 bytes at a time
-	    for(j=0;j<ihex->ihrs_records[i].ihr_length;j+=16)
-	      {
-		// work out how big this piece is
-		int length=16;
-		if (j+16>ihex->ihrs_records[i].ihr_length)
-		  length=ihex->ihrs_records[i].ihr_length-j;
+      printf("Checking if the radio already has this version of firmware...\n");
+      if (write_or_verify_flash(fd,ihex,0))
+	{
+	  printf("Firmware differs: erasing and flashing...\n");
 
-		// XXX Write to flash
+	  // XXX Erase ROM
 
-		// Read back from flash and verify
-		unsigned char buffer[length];
-		set_flash_addr(fd,ihex->ihrs_records[i].ihr_address+j);
-		read_flash(fd,buffer,length);
-		int k;
-		for(k=0;k<length;k++)
-		  if (ihex->ihrs_records[i].ihr_data[j+k]
-		      !=buffer[k])
-		    {
-		      fprintf(stderr,"Verify error at $%04x"
-			      " : expected $%02x, but read $%02x\n",
-			      ihex->ihrs_records[i].ihr_address+j+k,
-			      ihex->ihrs_records[i].ihr_data[j+k],buffer[k]);
-		      write(fd,"0",1);
-		      exit(-4);
-		    }
-	      }
-	  }
-
+	  // Write ROM
+	  write_or_verify_flash(fd,ihex,1);
+	}
 
       // Reboot radio
       write(fd,"0",1);
