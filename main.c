@@ -163,6 +163,14 @@ void expect_ok(int fd)
   }
 }
 
+void set_flash_addr(int fd,int addr)
+{
+}
+
+void read_flash(int fd,unsigned char *buffer,int length)
+{
+}
+
 int main(int argc,char **argv)
 {
   if (argc!=3) {
@@ -294,6 +302,45 @@ int main(int argc,char **argv)
       expect_ok(fd);
 
       printf("Erased parameters.\n");
+
+      // XXX Erase ROM
+
+      // Program all parts of the firmware and verify that that got written
+      for(i=0;i<ihex->ihrs_count;i++)
+	if (ihex->ihrs_records[i].ihr_type==0x00)
+	  {
+	    printf("Preparing to write %d bytes\n",
+		   ihex->ihrs_records[i].ihr_length);
+	    int j;
+	    // write 16 bytes at a time
+	    for(j=0;j<ihex->ihrs_records[i].ihr_length;j+=16)
+	      {
+		// work out how big this piece is
+		int length=16;
+		if (j+16>ihex->ihrs_records[i].ihr_length)
+		  length=ihex->ihrs_records[i].ihr_length-j;
+
+		// XXX Write to flash
+
+		// Read back from flash and verify
+		unsigned char buffer[length];
+		set_flash_addr(fd,ihex->ihrs_records[i].ihr_address+j);
+		read_flash(fd,buffer,length);
+		int k;
+		for(k=0;k<length;k++)
+		  if (ihex->ihrs_records[i].ihr_data[j+k]
+		      !=buffer[k])
+		    {
+		      fprintf(stderr,"Verify error at $%04x"
+			      " : expected $%02x, but read $%02x\n",
+			      ihex->ihrs_records[i].ihr_address+j+k,
+			      ihex->ihrs_records[i].ihr_data[j+k],buffer[k]);
+		      write(fd,"0",1);
+		      exit(-4);
+		    }
+	      }
+	  }
+
 
       // Reboot radio
       write(fd,"0",1);
