@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <strings.h>
+#include <stdlib.h>
 #include "cintelhex.h"
 
 #define NOP		0x00
@@ -195,7 +196,7 @@ void write_flash(int fd,unsigned char *buffer,int length)
   unsigned char cmd[8+length];
   cmd[0]=PROG_MULTI;
   cmd[1]=length;
-  bcopy(&cmd[2],buffer,length);
+  memcpy(&cmd[2],buffer,length);
   cmd[2+length]=EOC;
   write(fd,cmd,3+length);
   expect_insync(fd);
@@ -204,17 +205,22 @@ void write_flash(int fd,unsigned char *buffer,int length)
 
 int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 {
+  int max=255;
+  if (writeP) max=32;
+
   int i;
+  int fail=0;
   for(i=0;i<ihex->ihrs_count;i++)
     if (ihex->ihrs_records[i].ihr_type==0x00)
       {
+	if (fail) break;
+
 	int j;
-	// write 16 bytes at a time
-	for(j=0;j<ihex->ihrs_records[i].ihr_length;j+=16)
+	// write 32 bytes at a time
+	for(j=0;j<ihex->ihrs_records[i].ihr_length;j+=max)
 	  {
 	    // work out how big this piece is
-	    int length=255;
-	    if (writeP) length=32;
+	    int length=max;
 	    if (j+length>ihex->ihrs_records[i].ihr_length)
 	      length=ihex->ihrs_records[i].ihr_length-j;
 	    
@@ -239,23 +245,35 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 		  !=buffer[k])
 		{
 		  // Verify error
-		  if (writeP) {
-		    fprintf(stderr,"\nVerify error at $%04x"
-			    " : expected $%02x, but read $%02x\n",
-			    ihex->ihrs_records[i].ihr_address+j+k,
-			    ihex->ihrs_records[i].ihr_data[j+k],buffer[k]);
-		    write(fd,"0",1);
-		    exit(-4);
-		  }
-		  else return -1;
+		  fprintf(stderr,"\nVerify error at $%04x"
+			  " : expected $%02x, but read $%02x\n",
+			  ihex->ihrs_records[i].ihr_address+j+k,
+			  ihex->ihrs_records[i].ihr_data[j+k],buffer[k]);
+		  fail=1;
 		}
 	  }
       }
   printf("\n");
+  if (fail) {
+    if (writeP) {
+      write(fd,"0",1);
+      exit(-4);
+    }
+    else return -1;
+  }
   return 0;
 }
   
-  
+int compare_ihex_record(const void *a,const void *b)
+{
+  const ihex_record_t *aa=a;
+  const ihex_record_t *bb=b;
+
+  if (aa->ihr_address<bb->ihr_address) return -1;
+  if (aa->ihr_address>bb->ihr_address) return 1;
+  return 0;
+}
+
 int main(int argc,char **argv)
 {
   if ((argc<3|| argc>4)
@@ -271,7 +289,18 @@ int main(int argc,char **argv)
   }
   printf("Read %d IHEX records from firmware file\n",ihex->ihrs_count);
 
+  // Sort IHEX records into ascending address order so that when we flash 
+  // them we don't mess things up by writing the flash data in the wrong order 
+  qsort(ihex->ihrs_records,ihex->ihrs_count,sizeof(ihex_record_t),
+	compare_ihex_record);
+
   int i;
+  if (0)
+    for(i=0;i<ihex->ihrs_count;i++)
+      printf("$%04x - $%04x\n",
+	     ihex->ihrs_records[i].ihr_address,
+	     ihex->ihrs_records[i].ihr_address+
+	     ihex->ihrs_records[i].ihr_length-1);
 
   int fd=open(argv[2],O_RDWR);
   if (fd==-1) {
@@ -283,8 +312,8 @@ int main(int argc,char **argv)
       exit(-1);
     }
     
-    int speeds[4]={115200,230400,57600,38400};
-    int speed_count=4;
+    int speeds[8]={115200,230400,57600,38400,19200,9600,2400,1200};
+    int speed_count=8;
 
   printf("Trying to get command mode...\n");
   for(i=0;i<speed_count;i++) {
@@ -296,45 +325,79 @@ int main(int argc,char **argv)
 
     // Make sure we have left command mode and bootloader mode
     // 0 = $30 = bootloader reboot command
-    write(fd,"0\b\b\b\b\b\b\b\b\b\b\b\b\rATO\r",18);
-    sleep(2); // allow 2 sec to reboot if it was in bootloader mode already
-
-    // now try to get to AT command mode
-    sleep(1);
-    write(fd,"+++",3);
+    unsigned char cmd[260]; bzero(&cmd[0],260);
     
-    // now wait for upto 3 seconds for "OK" 
-    // (really 2.00001 - 3.99999 seconds)
-    time_t timeout=time(0)+2+1;
+    printf("Checking if stuck in bootloader\n");
+    // Make sure there is no command in progress with the boot loader
+    write(fd,cmd,260);
+    // Try to sync with bootloader if it is already running
+    cmd[0]=GET_DEVICE;
+    cmd[1]=EOC;
+    write(fd,cmd,2);
+    unsigned char bootloaderdetect[4]={0x43,0x91,0x12,0x10};
     int state=0;
-    char *ok_string="OK";
+    time_t timeout=time(0)+2;
     while(time(0)<timeout) {
-      char buffer[2];
+      unsigned char buffer[2];
       int r=read(fd,buffer,1);
       if (r==1) {
-	if (buffer[0]==ok_string[state]) state++; else state=0;
-	if (state==2) break;
-      } else usleep(50000);
+	if (buffer[0]==bootloaderdetect[state]) state++; else state=0;
+	if (state==4) {
+	  printf("Looks like we are in the bootloader already\n");
+	  break;
+	}
+      }
     }
-    if (state==2) {
+    
+    if (state==4)
+      printf("Detected RFD900 is already in bootloader\n");
+    else
+      {
+	printf("Trying to switch to AT command mode\n");
+	write(fd,"\b\b\b\b\b\b\b\b\b\b\b\b\rATO\r",18);
+	sleep(2); // allow 2 sec to reboot if it was in bootloader mode already
+	
+	// now try to get to AT command mode
+	sleep(1);
+	write(fd,"+++",3);
+	
+	// now wait for upto 3 seconds for "OK" 
+	// (really 2.00001 - 3.99999 seconds)
+	timeout=time(0)+2+1;
+	state=0;
+	char *ok_string="OK";
+	while(time(0)<timeout) {
+	  char buffer[2];
+	  int r=read(fd,buffer,1);
+	  if (r==1) {
+	    if (buffer[0]==ok_string[state]) state++; else state=0;
+	    if (state==2) break;
+	  } else usleep(50000);
+	}
+	if (state==2) {
+	  // try AT&UPDATE
+	  printf("Switching to boot loader...\n");
+	  write(fd,"AT&UPDATE\r\n",strlen("AT&UPDATE\r\n"));
+	  
+	  // then switch to 115200 regardless of the speed we were at,
+	  // since the bootloader always talks 115200
+	  setup_serial_port(fd,115200);
+      
+	  // give time to switch to boot loader
+	  // and consume any characters that arrive in the meantime
+	  time_t timeout=time(0)+2;
+	  while(time(0)<timeout) {
+	    unsigned char buffer[2];
+	    int r=read(fd,(char *)buffer,1);
+	    if (r!=1) usleep(100000);
+	  }
+      
+	  state=4;
+	}
+      }
+    if (state==4) {
       // got command mode (probably)
       printf("Got OK at %d\n",speeds[i]);
-
-      // try AT&UPDATE
-      printf("Switching to boot loader...\n");
-      write(fd,"AT&UPDATE\r\n",strlen("AT&UPDATE\r\n"));
-      // then switch to 115200 regardless of the speed we were at,
-      // since the bootloader always talks 115200
-      setup_serial_port(fd,115200);
-
-      // give time to switch to boot loader
-      // and consume any characters that arrive in the meantime
-      time_t timeout=time(0)+2;
-      while(time(0)<timeout) {
-	unsigned char buffer[2];
-	int r=read(fd,(char *)buffer,1);
-	if (r!=1) usleep(100000);
-      }
       
       // ask for board ID
       unsigned char cmd[1024];
@@ -362,7 +425,7 @@ int main(int argc,char **argv)
       printf("Checking if the radio already has this version of firmware...\n");
       if ((argc==4)||write_or_verify_flash(fd,ihex,0))
 	{
-	  printf("Firmware differs: erasing and flashing...\n");
+	  printf("\nFirmware differs: erasing and flashing...\n");
 
 	  // Erase ROM
 	  printf("Erasing flash.\n");
