@@ -131,6 +131,38 @@ int setup_serial_port(int fd, int baud)
   return 0;
 }
 
+int next_char(int fd)
+{
+  time_t timeout=time(0)+10;
+  while(time(0)<timeout) {
+    unsigned char buffer[2];
+    int r=read(fd,(char *)buffer,1);
+    if (r==1) {
+      return buffer[0];
+    } else usleep(100000);
+  }
+  return -1;
+}
+
+void expect_insync(int fd)
+{
+  int c=next_char(fd);
+  if (c!=INSYNC) {
+    fprintf(stderr,"Failed to synchronise (saw $%02x instead of $%02x)\n",c,INSYNC);
+    write(fd,"0",1);
+    exit(-3);
+  }
+}
+
+void expect_ok(int fd)
+{
+  if (next_char(fd)!=OK) {
+    fprintf(stderr,"Failed to receive OK.\n");
+    write(fd,"0",1);
+    exit(-3);
+  }
+}
+
 int main(int argc,char **argv)
 {
   if (argc!=3) {
@@ -231,14 +263,40 @@ int main(int argc,char **argv)
       // then switch to 115200 regardless of the speed we were at,
       // since the bootloader always talks 115200
       setup_serial_port(fd,115200);
-      time_t timeout=time(0)+2+1;
+
+      // give time to switch to boot loader
+      // and consume any characters that arrive in the meantime
+      time_t timeout=time(0)+2;
       while(time(0)<timeout) {
 	unsigned char buffer[2];
 	int r=read(fd,(char *)buffer,1);
-	if (r==1) {
-	  printf("Got $%02x\n",buffer[0]);
-	}
+	if (r!=1) usleep(100000);
       }
+      
+      // ask for board ID
+      unsigned char cmd[1024];
+      cmd[0]=GET_DEVICE;
+      cmd[1]=EOC;
+      write(fd,cmd,2);
+
+      int id = next_char(fd);
+      int freq = next_char(fd);
+      expect_insync(fd);
+      expect_ok(fd);
+     
+      printf("Board id = $%02x, freq = $%02x\n",id,freq);
+
+      // Reset parameters
+      cmd[0]=PARAM_ERASE;
+      cmd[1]=EOC;
+      write(fd,cmd,2);
+      expect_insync(fd);
+      expect_ok(fd);
+
+      printf("Erased parameters.\n");
+
+      // Reboot radio
+      write(fd,"0",1);
 
       break;
     } else {
