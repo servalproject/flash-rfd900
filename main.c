@@ -213,7 +213,8 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 	for(j=0;j<ihex->ihrs_records[i].ihr_length;j+=16)
 	  {
 	    // work out how big this piece is
-	    int length=32;
+	    int length=255;
+	    if (writeP) length=32;
 	    if (j+length>ihex->ihrs_records[i].ihr_length)
 	      length=ihex->ihrs_records[i].ihr_length-j;
 	    
@@ -257,11 +258,12 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
   
 int main(int argc,char **argv)
 {
-  if (argc!=3) {
-    fprintf(stderr,"usage: flash900 <firmware> <serial port>\n");
+  if ((argc<3|| argc>4)
+      ||(argc==4&&strcasecmp(argv[3],"force"))) {
+    fprintf(stderr,"usage: flash900 <firmware> <serial port> [force]\n");
     exit(-1);
   }
-  
+
   ihex_recordset_t *ihex=ihex_rs_from_file(argv[1]);
   if (!ihex) {
     fprintf(stderr,"Could not read intelhex from file '%s'\n",argv[1]);
@@ -358,7 +360,7 @@ int main(int argc,char **argv)
 
       // Program all parts of the firmware and verify that that got written
       printf("Checking if the radio already has this version of firmware...\n");
-      if (write_or_verify_flash(fd,ihex,0))
+      if ((argc==4)||write_or_verify_flash(fd,ihex,0))
 	{
 	  printf("Firmware differs: erasing and flashing...\n");
 
