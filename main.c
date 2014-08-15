@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <strings.h>
 #include "cintelhex.h"
 
 #define NOP		0x00
@@ -187,8 +188,8 @@ int main(int argc,char **argv)
       exit(-1);
     }
     
-    int speeds[5]={2400,115200,230400,57600,38400};
-    int speed_count=5;
+    int speeds[4]={115200,230400,57600,38400};
+    int speed_count=4;
 
   printf("Trying to get command mode...\n");
   for(i=0;i<speed_count;i++) {
@@ -198,8 +199,10 @@ int main(int argc,char **argv)
       exit(-1);
     }
 
-    // Make sure we have left command mode
-    write(fd,"\b\b\b\b\b\b\b\b\b\b\b\b\rATO\r",17);
+    // Make sure we have left command mode and bootloader mode
+    // 0 = $30 = bootloader reboot command
+    write(fd,"0\b\b\b\b\b\b\b\b\b\b\b\b\rATO\r",18);
+    sleep(2); // allow 2 sec to reboot if it was in bootloader mode already
 
     // now try to get to AT command mode
     sleep(1);
@@ -221,6 +224,22 @@ int main(int argc,char **argv)
     if (state==2) {
       // got command mode (probably)
       printf("Got OK at %d\n",speeds[i]);
+
+      // try AT&UPDATE
+      printf("Switching to boot loader...\n");
+      write(fd,"AT&UPDATE\r\n",strlen("AT&UPDATE\r\n"));
+      // then switch to 115200 regardless of the speed we were at,
+      // since the bootloader always talks 115200
+      setup_serial_port(fd,115200);
+      time_t timeout=time(0)+2+1;
+      while(time(0)<timeout) {
+	unsigned char buffer[2];
+	int r=read(fd,(char *)buffer,1);
+	if (r==1) {
+	  printf("Got $%02x\n",buffer[0]);
+	}
+      }
+
       break;
     } else {
       printf("Modem doesn't seem to be at %dbps\n",speeds[i]);
