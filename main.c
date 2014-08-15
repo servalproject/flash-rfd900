@@ -139,7 +139,7 @@ int next_char(int fd)
     int r=read(fd,(char *)buffer,1);
     if (r==1) {
       return buffer[0];
-    } else sleep(0);
+    } else usleep(1000);
   }
   return -1;
 }
@@ -148,7 +148,7 @@ void expect_insync(int fd)
 {
   int c=next_char(fd);
   if (c!=INSYNC) {
-    fprintf(stderr,"Failed to synchronise (saw $%02x instead of $%02x)\n",c,INSYNC);
+    fprintf(stderr,"\nFailed to synchronise (saw $%02x instead of $%02x)\n",c,INSYNC);
     write(fd,"0",1);
     exit(-3);
   }
@@ -157,7 +157,7 @@ void expect_insync(int fd)
 void expect_ok(int fd)
 {
   if (next_char(fd)!=OK) {
-    fprintf(stderr,"Failed to receive OK.\n");
+    fprintf(stderr,"\nFailed to receive OK.\n");
     write(fd,"0",1);
     exit(-3);
   }
@@ -190,6 +190,18 @@ void read_flash(int fd,unsigned char *buffer,int length)
   expect_ok(fd);  
 }
 
+void write_flash(int fd,unsigned char *buffer,int length)
+{
+  unsigned char cmd[8+length];
+  cmd[0]=PROG_MULTI;
+  cmd[1]=length;
+  bcopy(&cmd[2],buffer,length);
+  cmd[2+length]=EOC;
+  write(fd,cmd,3+length);
+  expect_insync(fd);
+  expect_ok(fd);  
+}
+
 int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 {
   int i;
@@ -211,8 +223,9 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 	    fflush(stdout);
 
 	    if (writeP) {
-	      // XXX Write to flash
-
+	      // Write to flash
+	      set_flash_addr(fd,ihex->ihrs_records[i].ihr_address+j);
+	      write_flash(fd,&ihex->ihrs_records[i].ihr_data[j],length);
 	    }
 	    
 	    // Read back from flash and verify
@@ -226,7 +239,7 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 		{
 		  // Verify error
 		  if (writeP) {
-		    fprintf(stderr,"Verify error at $%04x"
+		    fprintf(stderr,"\nVerify error at $%04x"
 			    " : expected $%02x, but read $%02x\n",
 			    ihex->ihrs_records[i].ihr_address+j+k,
 			    ihex->ihrs_records[i].ihr_data[j+k],buffer[k]);
@@ -237,6 +250,7 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 		}
 	  }
       }
+  printf("\n");
   return 0;
 }
   
@@ -348,9 +362,16 @@ int main(int argc,char **argv)
 	{
 	  printf("Firmware differs: erasing and flashing...\n");
 
-	  // XXX Erase ROM
+	  // Erase ROM
+	  printf("Erasing flash.\n");
+	  cmd[0]=CHIP_ERASE;
+	  cmd[1]=EOC;
+	  write(fd,cmd,2);
+	  expect_insync(fd);
+	  expect_ok(fd);
 
 	  // Write ROM
+	  printf("Flash erased, now writing new firmware.\n");
 	  write_or_verify_flash(fd,ihex,1);
 	}
 
