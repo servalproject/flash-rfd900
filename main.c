@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <string.h>
 #include <strings.h>
 #include <stdlib.h>
 #include "cintelhex.h"
