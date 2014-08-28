@@ -135,13 +135,15 @@ int setup_serial_port(int fd, int baud)
 
 int next_char(int fd)
 {
+  int w=0;
   time_t timeout=time(0)+10;
   while(time(0)<timeout) {
     unsigned char buffer[2];
     int r=read(fd,(char *)buffer,1);
     if (r==1) {
+      // if (w) { printf("[%d]",w); fflush(stdout); }
       return buffer[0];
-    } else usleep(1000);
+    } else { usleep(1000); w++; }
   }
   return -1;
 }
@@ -173,6 +175,7 @@ void set_flash_addr(int fd,int addr)
   cmd[2]=(addr>>8)&0xff;
   cmd[3]=EOC;
   write(fd,cmd,4);
+
   expect_insync(fd);
   expect_ok(fd);
 }
@@ -184,10 +187,13 @@ void read_flash(int fd,unsigned char *buffer,int length)
   cmd[1]=length;
   cmd[2]=EOC;
   write(fd,cmd,3);
+
   int i;
+
   for(i=0;i<length;i++) {
     buffer[i]=next_char(fd);
   }
+
   expect_insync(fd);
   expect_ok(fd);  
 }
@@ -204,10 +210,43 @@ void write_flash(int fd,unsigned char *buffer,int length)
   expect_ok(fd);  
 }
 
+// Bulk read all 64KB of flash for quick comparison, and without USB serial
+// delays, and also just with higher efficiency because we can use the bandwidth
+// more efficiently.
+int read_64kb_flash(int fd,unsigned char buffer[65536])
+{
+  int a;
+
+  // set read address to $0000
+  set_flash_addr(fd,0x0000);
+
+  int l=0xff;
+
+  // really only read 63KB.
+  // we pipe-line this to avoid USB serial delays, so the first read happens out
+  // here, and subsequent read commands just before reading
+  for(a=0;a<0xfc00;a+=0xff) {
+    // work out transaction length
+    l=0xff;
+    if (a+l>0xfbff) 
+      { l=0xfbff-a+1; }
+
+    printf("\r$%04x - $%04x",a,a+l-1); fflush(stdout);
+
+    // read data
+    read_flash(fd,&buffer[a],l);
+  }
+  printf("\n");
+  return 0;
+
+}
+
 int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 {
   int max=255;
   if (writeP) max=32;
+
+  printf("max=%d\n",max);
 
   int i;
   int fail=0;
@@ -222,23 +261,25 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 	  {
 	    // work out how big this piece is
 	    int length=max;
-	    if (j+length>ihex->ihrs_records[i].ihr_length)
+	    if (j+length>ihex->ihrs_records[i].ihr_length) {
+	      printf("  clipping read from $%02x\n",length);
 	      length=ihex->ihrs_records[i].ihr_length-j;
+	    }
 	    
-	    printf("\rRange $%04x - $%04x",
+	    printf("\rRange $%04x - $%04x (len=$%02x)",
 		   ihex->ihrs_records[i].ihr_address+j,
-		   ihex->ihrs_records[i].ihr_address+j+length-1);
+		   ihex->ihrs_records[i].ihr_address+j+length-1,length);
 	    fflush(stdout);
 
 	    if (writeP) {
 	      // Write to flash
-	      set_flash_addr(fd,ihex->ihrs_records[i].ihr_address+j);
+	      set_flash_addr(fd,ihex->ihrs_records[i].ihr_address+j);  
 	      write_flash(fd,&ihex->ihrs_records[i].ihr_data[j],length);
 	    }
 	    
-	    // Read back from flash and verify
+	    // Read back from flash and verify.
 	    unsigned char buffer[length];
-	    set_flash_addr(fd,ihex->ihrs_records[i].ihr_address+j);
+	    set_flash_addr(fd,ihex->ihrs_records[i].ihr_address+j);  
 	    read_flash(fd,buffer,length);
 	    int k;
 	    for(k=0;k<length;k++)
@@ -424,7 +465,28 @@ int main(int argc,char **argv)
 
       // Program all parts of the firmware and verify that that got written
       printf("Checking if the radio already has this version of firmware...\n");
-      if ((argc==4)||write_or_verify_flash(fd,ihex,0))
+      int fail=0;
+      if (argc==3) {
+	// read flash and compare with ihex records
+	unsigned char buffer[65536];
+	printf("Bulk reading from flash...\n");
+	read_64kb_flash(fd,buffer);
+	printf("Read all 64KB flash. Now verifying...\n");
+	
+	int i;
+	for(i=0;i<ihex->ihrs_count;i++)
+	  if (ihex->ihrs_records[i].ihr_type==0x00)
+	    {
+	      if (fail) break;
+	      
+	      if (memcmp(&buffer[ihex->ihrs_records[i].ihr_address],
+			 ihex->ihrs_records[i].ihr_data,
+			 ihex->ihrs_records[i].ihr_length))
+		fail=1;
+	    }
+	
+      }
+      if ((argc==4)||fail)
 	{
 	  printf("\nFirmware differs: erasing and flashing...\n");
 
