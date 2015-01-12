@@ -416,10 +416,29 @@ int main(int argc,char **argv)
 	    if (state==2) break;
 	  } else usleep(50000);
 	}
-	if (state==2) {
-	  // try AT&UPDATE
+	if (state==2) {	 
+	  // try AT&UPDATE or ATS1=115\rAT&W\rATZ if the modem isn't already on 115200bps
 	  printf("Switching to boot loader...\n");
-	  write(fd,"AT&UPDATE\r\n",strlen("AT&UPDATE\r\n"));
+	  char *cmd="AT&UPDATE\r\n";
+
+	  if (speeds[i]==115200) {
+	    write(fd,cmd,strlen(cmd));
+	  } else {
+	    char *cmd="ATS1=115\r\n";
+	    write(fd,cmd,strlen(cmd));
+	    sleep(1);
+	    cmd="AT&W\r\n";
+	    write(fd,cmd,strlen(cmd));
+	    sleep(1);
+	    cmd="ATZ\r\n";	  
+	    write(fd,cmd,strlen(cmd));
+	    sleep(1);
+
+	    // Go back to looking for modem at 115200
+	    printf("Changing modem from %d to 115200bps\n",
+		   speeds[i]);
+	    i=-1; continue;
+	  }
 	  
 	  // then switch to 115200 regardless of the speed we were at,
 	  // since the bootloader always talks 115200
