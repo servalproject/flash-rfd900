@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/time.h>
 #include <string.h>
 #include <strings.h>
 #include <stdlib.h>
@@ -262,7 +263,7 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 	    // work out how big this piece is
 	    int length=max;
 	    if (j+length>ihex->ihrs_records[i].ihr_length) {
-	      printf("  clipping read from $%02x\n",length);
+	      // printf("  clipping read from $%02x\n",length);
 	      length=ihex->ihrs_records[i].ihr_length-j;
 	    }
 	    
@@ -316,6 +317,18 @@ int compare_ihex_record(const void *a,const void *b)
   return 0;
 }
 
+
+long long gettime_ms()
+{
+  struct timeval nowtv;
+  // If gettimeofday() fails or returns an invalid value, all else is lost!
+  if (gettimeofday(&nowtv, NULL) == -1)
+    return -1;
+  if (nowtv.tv_sec < 0 || nowtv.tv_usec < 0 || nowtv.tv_usec >= 1000000)
+    return -1;
+  return nowtv.tv_sec * 1000LL + nowtv.tv_usec / 1000;
+}
+
 int main(int argc,char **argv)
 {
   if ((argc<3|| argc>4)
@@ -323,26 +336,6 @@ int main(int argc,char **argv)
     fprintf(stderr,"usage: flash900 <firmware> <serial port> [force]\n");
     exit(-1);
   }
-
-  ihex_recordset_t *ihex=ihex_rs_from_file(argv[1]);
-  if (!ihex) {
-    fprintf(stderr,"Could not read intelhex from file '%s'\n",argv[1]);
-    exit(-2);
-  }
-  printf("Read %d IHEX records from firmware file\n",ihex->ihrs_count);
-
-  // Sort IHEX records into ascending address order so that when we flash 
-  // them we don't mess things up by writing the flash data in the wrong order 
-  qsort(ihex->ihrs_records,ihex->ihrs_count,sizeof(ihex_record_t),
-	compare_ihex_record);
-
-  int i;
-  if (0)
-    for(i=0;i<ihex->ihrs_count;i++)
-      printf("$%04x - $%04x\n",
-	     ihex->ihrs_records[i].ihr_address,
-	     ihex->ihrs_records[i].ihr_address+
-	     ihex->ihrs_records[i].ihr_length-1);
 
   int fd=open(argv[2],O_RDWR);
   if (fd==-1) {
@@ -354,10 +347,11 @@ int main(int argc,char **argv)
       exit(-1);
     }
     
-    int speeds[8]={115200,230400,57600,38400,19200,9600,2400,1200};
+    int speeds[8]={230400,115200,57600,38400,19200,9600,2400,1200};
     int speed_count=8;
 
   printf("Trying to get command mode...\n");
+  int i;
   for(i=0;i<speed_count;i++) {
     // set port speed and non-blocking, and disable CTSRTS 
     if (setup_serial_port(fd,speeds[i])) {
@@ -365,6 +359,8 @@ int main(int argc,char **argv)
       exit(-1);
     }
 
+    int last_char = 0;
+    
     // Make sure we have left command mode and bootloader mode
     // 0 = $30 = bootloader reboot command
     unsigned char cmd[260]; bzero(&cmd[0],260);
@@ -378,11 +374,12 @@ int main(int argc,char **argv)
     write(fd,cmd,2);
     unsigned char bootloaderdetect[4]={0x43,0x91,0x12,0x10};
     int state=0;
-    time_t timeout=time(0)+2;
-    while(time(0)<timeout) {
+    long long timeout=gettime_ms()+1250;
+    while(gettime_ms()<timeout) {
       unsigned char buffer[2];
       int r=read(fd,buffer,1);
       if (r==1) {
+	//	printf("  read %02X\n",buffer[0]);
 	if (buffer[0]==bootloaderdetect[state]) state++; else state=0;
 	if (state==4) {
 	  printf("Looks like we are in the bootloader already\n");
@@ -396,25 +393,29 @@ int main(int argc,char **argv)
     else
       {
 	printf("Trying to switch to AT command mode\n");
-	write(fd,"\b\b\b\b\b\b\b\b\b\b\b\b\rATO\r",18);
-	sleep(2); // allow 2 sec to reboot if it was in bootloader mode already
+	write(fd,"\b\b\b\b\b\b\b\b\b\b\b\b\r",14);
+	// give it time to process the above, so that the first character of ATO
+	// doesn't get eaten.
+	usleep(10000);        
+	write(fd,"ATO\r",4);
+	// sleep(2); // allow 2 sec to reboot if it was in bootloader mode already
 	
 	// now try to get to AT command mode
 	sleep(1);
 	write(fd,"+++",3);
 	
-	// now wait for upto 3 seconds for "OK" 
-	// (really 2.00001 - 3.99999 seconds)
-	timeout=time(0)+2+1;
+	// now wait for upto 1.2 seconds for "OK" 
+	timeout=gettime_ms()+1200;
 	state=0;
-	char *ok_string="OK";
-	while(time(0)<timeout) {
-	  char buffer[2];
+	while(gettime_ms()<timeout) {
+	  char buffer[1];
 	  int r=read(fd,buffer,1);
 	  if (r==1) {
-	    if (buffer[0]==ok_string[state]) state++; else state=0;
+	    //	    printf("  read %02X\n",buffer[0]);
+	    if ((buffer[0]=='K') && (last_char == 'O')) state=2; else state=0;
+	    last_char = buffer[0];
 	    if (state==2) break;
-	  } else usleep(50000);
+	  } else usleep(10000);
 	}
 	if (state==2) {	 
 	  // try AT&UPDATE or ATS1=115\rAT&W\rATZ if the modem isn't already on 115200bps
@@ -446,11 +447,14 @@ int main(int argc,char **argv)
       
 	  // give time to switch to boot loader
 	  // and consume any characters that arrive in the meantime
-	  time_t timeout=time(0)+2;
-	  while(time(0)<timeout) {
+	  timeout=gettime_ms()+1500;
+	  while(gettime_ms()<timeout) {
 	    unsigned char buffer[2];
 	    int r=read(fd,(char *)buffer,1);
-	    if (r!=1) usleep(100000);
+	    // fprintf(stderr,"Read %02X from bootloader.\n",buffer[0]);
+	    if (r!=1) usleep(100000); else {
+	      // printf("  read %02X\n",buffer[0]);
+	    }
 	  }
       
 	  state=4;
@@ -471,8 +475,37 @@ int main(int argc,char **argv)
       expect_insync(fd);
       expect_ok(fd);
      
-      printf("Board id = $%02x, freq = $%02x\n",id,freq);
+      char filename[1024];
+      snprintf(filename,1024,"%s-%02X-%02X.ihx",argv[1],id,freq);
 
+      printf("Board id = $%02x, freq = $%02x : Will load firmware from '%s'\n",
+	     id,freq,filename);
+      
+      ihex_recordset_t *ihex=ihex_rs_from_file(filename);
+      if (!ihex) {
+	fprintf(stderr,"Could not read intelhex from file '%s'\n",filename);
+
+	// Reboot radio
+	write(fd,"0",1);
+	
+	exit(-2);
+      }
+      printf("Read %d IHEX records from firmware file\n",ihex->ihrs_count);
+      
+      // Sort IHEX records into ascending address order so that when we flash 
+      // them we don't mess things up by writing the flash data in the wrong order 
+      qsort(ihex->ihrs_records,ihex->ihrs_count,sizeof(ihex_record_t),
+	    compare_ihex_record);
+      
+      int i;
+      if (0)
+	for(i=0;i<ihex->ihrs_count;i++)
+	  printf("$%04x - $%04x\n",
+		 ihex->ihrs_records[i].ihr_address,
+		 ihex->ihrs_records[i].ihr_address+
+		 ihex->ihrs_records[i].ihr_length-1);
+      
+      
       // Reset parameters
       cmd[0]=PARAM_ERASE;
       cmd[1]=EOC;
