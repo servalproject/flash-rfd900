@@ -178,7 +178,7 @@ void set_flash_addr(int fd,int addr)
   cmd[2]=(addr>>8)&0xff;
   cmd[3]=EOC;
   if (twentyfourbitaddressing) {
-    cmd[3]=(addr>>8)&0xff;
+    cmd[3]=(addr>>16)&0xff;
     cmd[4]=EOC;
   }
   write(fd,cmd,4+twentyfourbitaddressing);
