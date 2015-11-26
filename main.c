@@ -560,10 +560,14 @@ int main(int argc,char **argv)
 	// (Is $F7FE-$F7FF for non-volatile variable storage or something?
 	// it seems to never be set right after restart, but verifies back fine
 	// when actually writing).
+	// XXX - Actually, the AT&UPDATE command clears those bytes, so they will
+	// always be wrong, but the radio won't boot until they are set again.
+	// So we are stuck with this, until we can add commands to our CSMA firmware to
+	// allow reading of FLASH memory without entering the bootloader.
 	int i;
 	for(i=0;i<ihex->ihrs_count;i++)
 	  if (ihex->ihrs_records[i].ihr_type==0x00)
-	    if (ihex->ihrs_records[i].ihr_address<0xF7FE)
+	    // if (ihex->ihrs_records[i].ihr_address<0xF7FE)
 	      {
 		if (fail&&(!verify)) break;
 		
@@ -608,7 +612,8 @@ int main(int argc,char **argv)
 	}
 
       // Reboot radio
-      write(fd,"0",1);
+      cmd[0]='0';
+      write(fd,cmd,1);
 
       break;
     } else {
