@@ -47,6 +47,8 @@
 #define PARAM_ERASE	0x29
 #define REBOOT		0x30
 
+int twentyfourbitaddressing=0;
+
 int set_nonblock(int fd)
 {
   int flags;
@@ -175,7 +177,11 @@ void set_flash_addr(int fd,int addr)
   cmd[1]=addr&0xff;
   cmd[2]=(addr>>8)&0xff;
   cmd[3]=EOC;
-  write(fd,cmd,4);
+  if (twentyfourbitaddressing) {
+    cmd[3]=(addr>>8)&0xff;
+    cmd[4]=EOC;
+  }
+  write(fd,cmd,4+twentyfourbitaddressing);
 
   expect_insync(fd);
   expect_ok(fd);
@@ -247,12 +253,18 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
   int max=255;
   if (writeP) max=32;
 
+  int address_base=0x00000000;
+  
   printf("max=%d\n",max);
 
   int i;
   int fail=0;
   for(i=0;i<ihex->ihrs_count;i++)
-    if (ihex->ihrs_records[i].ihr_type==0x00)
+    if (ihex->ihrs_records[i].ihr_type==0x04) {
+      // Set upper-16 bits of target address
+      address_base=ihex->ihrs_records[i].ihr_data[0]<<24;
+      address_base|=ihex->ihrs_records[i].ihr_data[1]<<16;
+    } else if (ihex->ihrs_records[i].ihr_type==0x00)
       {
 	if (fail) break;
 
@@ -381,6 +393,8 @@ int main(int argc,char **argv)
       if (r==1) {
 	//	printf("  read %02X\n",buffer[0]);
 	if (buffer[0]==bootloaderdetect[state]) state++; else state=0;
+	// Also detect RFD900+ bootloader properly
+	if ((state==0)&&(buffer[0]==0x82)) state=1;
 	if (state==4) {
 	  printf("Looks like we are in the bootloader already\n");
 	  break;
@@ -474,12 +488,17 @@ int main(int argc,char **argv)
       int freq = next_char(fd);
       expect_insync(fd);
       expect_ok(fd);
-     
+      
       char filename[1024];
       snprintf(filename,1024,"%s-%02X-%02X.ihx",argv[1],id,freq);
 
       printf("Board id = $%02x, freq = $%02x : Will load firmware from '%s'\n",
 	     id,freq,filename);
+
+      if (id==0x82) {
+	twentyfourbitaddressing=1;
+	printf("Using 24-bit addressing with this board.\n");
+      }
       
       ihex_recordset_t *ihex=ihex_rs_from_file(filename);
       if (!ihex) {
