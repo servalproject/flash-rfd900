@@ -279,7 +279,7 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 	      length=ihex->ihrs_records[i].ihr_length-j;
 	    }
 	    
-	    printf("\rRange $%04x - $%04x (len=$%02x)",
+	    printf("\rRange $%04x - $%04x (len=$%02x)\n",
 		   ihex->ihrs_records[i].ihr_address+j,
 		   ihex->ihrs_records[i].ihr_address+j+length-1,length);
 	    fflush(stdout);
@@ -344,7 +344,8 @@ long long gettime_ms()
 int main(int argc,char **argv)
 {
   if ((argc<3|| argc>4)
-      ||(argc==4&&strcasecmp(argv[3],"force"))) {
+      ||(argc==4&&(strcasecmp(argv[3],"force")
+		   &&strcasecmp(argv[3],"verify")))) {
     fprintf(stderr,"usage: flash900 <firmware> <serial port> [force]\n");
     exit(-1);
   }
@@ -537,27 +538,59 @@ int main(int argc,char **argv)
       // Program all parts of the firmware and verify that that got written
       printf("Checking if the radio already has this version of firmware...\n");
       int fail=0;
-      if (argc==3) {
+      int force=0;
+      int verify=0;
+      if (argc>3) {
+	if (!strcasecmp(argv[3],"force")) force=1;
+	if (!strcasecmp(argv[3],"verify")) verify=1;
+      }
+
+      /*
+	XXX - We only support 64KB of flash, even though the RFD900+ has 128KB
+      */
+      
+      if (!force) {
 	// read flash and compare with ihex records
 	unsigned char buffer[65536];
 	printf("Bulk reading from flash...\n");
 	read_64kb_flash(fd,buffer);
 	printf("Read all 64KB flash. Now verifying...\n");
-	
+
+	// Only check $0000-$F7FD, as the rest is boot loader or other stuff.
+	// (Is $F7FE-$F7FF for non-volatile variable storage or something?
+	// it seems to never be set right after restart, but verifies back fine
+	// when actually writing).
 	int i;
 	for(i=0;i<ihex->ihrs_count;i++)
 	  if (ihex->ihrs_records[i].ihr_type==0x00)
-	    {
-	      if (fail) break;
-	      
-	      if (memcmp(&buffer[ihex->ihrs_records[i].ihr_address],
-			 ihex->ihrs_records[i].ihr_data,
-			 ihex->ihrs_records[i].ihr_length))
-		fail=1;
-	    }
+	    if (ihex->ihrs_records[i].ihr_address<0xF7FE)
+	      {
+		if (fail&&(!verify)) break;
+		
+		if (memcmp(&buffer[ihex->ihrs_records[i].ihr_address],
+			   ihex->ihrs_records[i].ihr_data,
+			   ihex->ihrs_records[i].ihr_length)) {
+		  fail=1;
+		  printf("Verify error in range $%04x - $%04x\n",
+			 ihex->ihrs_records[i].ihr_address,
+			 ihex->ihrs_records[i].ihr_address
+			 +ihex->ihrs_records[i].ihr_length-1);
+		  {
+		    int j;
+		    printf("Expected content:");
+		    for(j=0;j<ihex->ihrs_records[i].ihr_length;j++)
+		      printf(" %02x",ihex->ihrs_records[i].ihr_data[j]);
+		    printf("\n");
+		    printf("Read from flash:");
+		    for(j=0;j<ihex->ihrs_records[i].ihr_length;j++)
+		      printf(" %02x",buffer[ihex->ihrs_records[i].ihr_address+j]);
+		    printf("\n");
+		  }
+		}
+	      }
 	
       }
-      if ((argc==4)||fail)
+      if ((force||fail)&&(!verify))
 	{
 	  printf("\nFirmware differs: erasing and flashing...\n");
 
