@@ -144,7 +144,7 @@ int next_char(int fd)
     unsigned char buffer[2];
     int r=read(fd,(char *)buffer,1);
     if (r==1) {
-      // if (w) { printf("[%d]",w); fflush(stdout); }
+      // { printf("[%02x]",buffer[0]); fflush(stdout); }
       return buffer[0];
     } else { usleep(1000); w++; }
   }
@@ -248,6 +248,86 @@ int read_64kb_flash(int fd,unsigned char buffer[65536])
 
 }
 
+void assemble_ihex(ihex_recordset_t *ihex, unsigned char buffer[65536])
+{
+  int i,j;
+  for(i=0;i<65535;i++) buffer[i]=0xff;
+  
+  for(i=0;i<ihex->ihrs_count;i++)
+    if (ihex->ihrs_records[i].ihr_type==0x04) {
+    } else if (ihex->ihrs_records[i].ihr_type==0x00) {
+      for(j=0;j<ihex->ihrs_records[i].ihr_length;j++)
+	{
+	  buffer[ihex->ihrs_records[i].ihr_address+j]
+	    =ihex->ihrs_records[i].ihr_data[j];
+	}
+    }
+  return;
+}
+
+int compare_ihex_record(const void *a,const void *b)
+{
+  const ihex_record_t *aa=a;
+  const ihex_record_t *bb=b;
+
+  if (aa->ihr_address<bb->ihr_address) return -1;
+  if (aa->ihr_address>bb->ihr_address) return 1;
+  return 0;
+}
+
+ihex_recordset_t *load_firmware(char *base,int id,int freq)
+{
+  char filename[1024];
+  snprintf(filename,1024,"%s-%02X-%02X.ihx",base,id,freq);
+  
+  printf("Board id = $%02x, freq = $%02x : Will load firmware from '%s'\n",
+	 id,freq,filename);
+  
+  if (id==0x82) {
+    twentyfourbitaddressing=1;
+    printf("Using 24-bit addressing with this board.\n");
+  }
+  
+  ihex_recordset_t *ihex=ihex_rs_from_file(filename);
+  if (!ihex) {
+    fprintf(stderr,"Could not read intel hex records from '%s'\n",filename);
+    return NULL;
+  }
+    
+  printf("Read %d IHEX records from firmware file\n",ihex->ihrs_count);
+  
+  // Sort IHEX records into ascending address order so that when we flash 
+  // them we don't mess things up by writing the flash data in the wrong order 
+  qsort(ihex->ihrs_records,ihex->ihrs_count,sizeof(ihex_record_t),
+	compare_ihex_record);
+
+  return ihex;
+}
+
+int calculate_hash(unsigned char buffer[65536],
+		   int start,int end,
+		   unsigned int *h1, unsigned int *h2)
+{
+  int i;
+  
+  uint32_t hash1=1,hash2=2;
+  uint8_t hibit;
+  for(i=start;i<end;i++) {
+    hibit=hash1>>31;
+    hash1 = hash1 << 1;
+    hash1 = hash1 ^ hibit;
+    hash1 = hash1 ^ buffer[i+0x400];
+    
+    hash2 = hash2 + buffer[i+0x400];
+  }       		
+  printf("HASH=%08x+%08x\n",hash1,hash2);
+
+  *h1=hash1;
+  *h2=hash2;
+  
+  return 0;
+}
+
 int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 {
   int max=255;
@@ -268,6 +348,13 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
       {
 	if (fail) break;
 
+	if ((ihex->ihrs_records[i].ihr_address+ihex->ihrs_records[i].ihr_length)
+	    >=0xfc00) {
+	  fprintf(stderr,"\nWARNING: Intel hex file contains out of bound data ($%02x-$%04x)\n",
+		  ihex->ihrs_records[i].ihr_address,
+		  ihex->ihrs_records[i].ihr_address+ihex->ihrs_records[i].ihr_length);
+	}
+	
 	int j;
 	// write 32 bytes at a time
 	for(j=0;j<ihex->ihrs_records[i].ihr_length;j+=max)
@@ -279,7 +366,7 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 	      length=ihex->ihrs_records[i].ihr_length-j;
 	    }
 	    
-	    printf("\rRange $%04x - $%04x (len=$%02x)\n",
+	    printf("\rRange $%04x - $%04x (len=$%02x)\r",
 		   ihex->ihrs_records[i].ihr_address+j,
 		   ihex->ihrs_records[i].ihr_address+j+length-1,length);
 	    fflush(stdout);
@@ -319,17 +406,6 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
   return 0;
 }
   
-int compare_ihex_record(const void *a,const void *b)
-{
-  const ihex_record_t *aa=a;
-  const ihex_record_t *bb=b;
-
-  if (aa->ihr_address<bb->ihr_address) return -1;
-  if (aa->ihr_address>bb->ihr_address) return 1;
-  return 0;
-}
-
-
 long long gettime_ms()
 {
   struct timeval nowtv;
@@ -343,6 +419,14 @@ long long gettime_ms()
 
 int main(int argc,char **argv)
 {
+  int start=0x0400;
+  int end=0xfc00;
+  int id=0xff;
+  int freq=0xff;
+  unsigned int hash1=1,hash2=2;
+  ihex_recordset_t *ihex=NULL;
+
+  
   if ((argc<3|| argc>4)
       ||(argc==4&&(strcasecmp(argv[3],"force")
 		   &&strcasecmp(argv[3],"verify")))) {
@@ -407,6 +491,33 @@ int main(int argc,char **argv)
       printf("Detected RFD900 is already in bootloader\n");
     else
       {
+
+	printf("Checking if supports !F for fast ID of firmware\n");
+	unsigned char reply[257];
+	// clear out any queued data first
+	int r=read(fd,reply,256); reply[256]=0;
+	// send !F
+	write(fd,"!F",2);
+	usleep(200000);
+	read(fd,reply,256); reply[256]=0;
+	if (r>0&&r<256) reply[r]=0;
+	printf("!F reply is '%s'\n",reply);
+	// if !F we are probably in command mode
+	// if HASH=xx:xx:xxxx:xxxx:xxxx+xxxx, then firmware supports function
+	if (sscanf((const char *)reply,"HASH=%x:%x:%x:%x:%x+%x",
+		   &id,&freq,&start,&end,&hash1,&hash2)==6) {
+	  printf("Successfully parsed HASH response.\n");
+	  ihex=load_firmware(argv[1],id,freq);
+
+	  unsigned int newhash1,newhash2;
+	  unsigned char ibuffer[65536];
+	  assemble_ihex(ihex,ibuffer);
+	  calculate_hash(ibuffer,start,end,&newhash1,&newhash2);
+
+	  exit(0);
+	}
+
+	
 	printf("Trying to switch to AT command mode\n");
 	write(fd,"\b\b\b\b\b\b\b\b\b\b\b\b\r",14);
 	// give it time to process the above, so that the first character of ATO
@@ -485,37 +596,20 @@ int main(int argc,char **argv)
       cmd[1]=EOC;
       write(fd,cmd,2);
 
-      int id = next_char(fd);
-      int freq = next_char(fd);
+      id = next_char(fd);
+      freq = next_char(fd);
       expect_insync(fd);
       expect_ok(fd);
       
-      char filename[1024];
-      snprintf(filename,1024,"%s-%02X-%02X.ihx",argv[1],id,freq);
-
-      printf("Board id = $%02x, freq = $%02x : Will load firmware from '%s'\n",
-	     id,freq,filename);
-
-      if (id==0x82) {
-	twentyfourbitaddressing=1;
-	printf("Using 24-bit addressing with this board.\n");
-      }
-      
-      ihex_recordset_t *ihex=ihex_rs_from_file(filename);
+      ihex=load_firmware(argv[1],id,freq);
       if (!ihex) {
-	fprintf(stderr,"Could not read intelhex from file '%s'\n",filename);
-
+	
 	// Reboot radio
 	write(fd,"0",1);
 	
 	exit(-2);
       }
-      printf("Read %d IHEX records from firmware file\n",ihex->ihrs_count);
-      
-      // Sort IHEX records into ascending address order so that when we flash 
-      // them we don't mess things up by writing the flash data in the wrong order 
-      qsort(ihex->ihrs_records,ihex->ihrs_count,sizeof(ihex_record_t),
-	    compare_ihex_record);
+
       
       int i;
       if (0)
@@ -555,6 +649,10 @@ int main(int argc,char **argv)
 	printf("Bulk reading from flash...\n");
 	read_64kb_flash(fd,buffer);
 	printf("Read all 64KB flash. Now verifying...\n");
+	unsigned int newhash1,newhash2;
+	unsigned char ibuffer[65536];
+	assemble_ihex(ihex,ibuffer);
+	calculate_hash(ibuffer,start,end,&newhash1,&newhash2);
 
 	// Only check $0000-$F7FD, as the rest is boot loader or other stuff.
 	// (Is $F7FE-$F7FF for non-volatile variable storage or something?
@@ -575,20 +673,22 @@ int main(int argc,char **argv)
 			   ihex->ihrs_records[i].ihr_data,
 			   ihex->ihrs_records[i].ihr_length)) {
 		  fail=1;
-		  printf("Verify error in range $%04x - $%04x\n",
-			 ihex->ihrs_records[i].ihr_address,
-			 ihex->ihrs_records[i].ihr_address
-			 +ihex->ihrs_records[i].ihr_length-1);
-		  {
-		    int j;
-		    printf("Expected content:");
-		    for(j=0;j<ihex->ihrs_records[i].ihr_length;j++)
-		      printf(" %02x",ihex->ihrs_records[i].ihr_data[j]);
-		    printf("\n");
-		    printf("Read from flash:");
-		    for(j=0;j<ihex->ihrs_records[i].ihr_length;j++)
-		      printf(" %02x",buffer[ihex->ihrs_records[i].ihr_address+j]);
-		    printf("\n");
+		  if (verify) {
+		    printf("Verify error in range $%04x - $%04x\n",
+			   ihex->ihrs_records[i].ihr_address,
+			   ihex->ihrs_records[i].ihr_address
+			   +ihex->ihrs_records[i].ihr_length-1);
+		    {
+		      int j;
+		      printf("Expected content:");
+		      for(j=0;j<ihex->ihrs_records[i].ihr_length;j++)
+			printf(" %02x",ihex->ihrs_records[i].ihr_data[j]);
+		      printf("\n");
+		      printf("Read from flash:");
+		      for(j=0;j<ihex->ihrs_records[i].ihr_length;j++)
+			printf(" %02x",buffer[ihex->ihrs_records[i].ihr_address+j]);
+		      printf("\n");
+		    }
 		  }
 		}
 	      }
