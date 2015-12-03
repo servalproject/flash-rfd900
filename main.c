@@ -486,10 +486,10 @@ int main(int argc,char **argv)
     int speed_count=8;
 
   printf("Trying to get command mode...\n");
-  int i;
-  for(i=0;i<speed_count;i++) {
+  int speed;
+  for(speed=0;speed<speed_count;speed++) {
     // set port speed and non-blocking, and disable CTSRTS 
-    if (setup_serial_port(fd,speeds[i])) {
+    if (setup_serial_port(fd,speeds[speed])) {
       fprintf(stderr,"Could not setup serial port '%s'\n",argv[2]);
       exit(-1);
     }
@@ -585,6 +585,7 @@ int main(int argc,char **argv)
 	  // not getting picked up -- however, since this method only applies to
 	  // the Serval Project, we can manage that risk there.
 	  int different=0;
+	  int i;
 	  for(i=0;i<60;i++) {
 	    if (checksum[i]!=ichecksums[i]) {
 	      printf("Checksum for $%04x - $%04x does not match ($%04x vs $%04x)\n",
@@ -597,6 +598,7 @@ int main(int argc,char **argv)
 	    printf("Flash ROM matched via checksum: nothing to do.\n");
 	    exit(0);
 	  }
+	  if (different) force=1;
 	}
 
 	
@@ -630,7 +632,7 @@ int main(int argc,char **argv)
 	  printf("Switching to boot loader...\n");
 	  char *cmd="AT&UPDATE\r\n";
 
-	  if (speeds[i]==115200) {
+	  if (speeds[speed]==115200) {
 	    write(fd,cmd,strlen(cmd));
 	  } else {
 	    char *cmd="ATS1=115\r\n";
@@ -645,8 +647,8 @@ int main(int argc,char **argv)
 
 	    // Go back to looking for modem at 115200
 	    printf("Changing modem from %d to 115200bps\n",
-		   speeds[i]);
-	    i=-1; continue;
+		   speeds[speed]);
+	    speed=-1; continue;
 	  }
 	  
 	  // then switch to 115200 regardless of the speed we were at,
@@ -670,7 +672,7 @@ int main(int argc,char **argv)
       }
     if (state==4) {
       // got command mode (probably)
-      printf("Got OK at %d\n",speeds[i]);
+      printf("Got OK at %d\n",speeds[speed]);
       
       // ask for board ID
       unsigned char cmd[1024];
@@ -796,7 +798,7 @@ int main(int argc,char **argv)
 
       break;
     } else {
-      printf("Modem doesn't seem to be at %dbps\n",speeds[i]);
+      printf("Modem doesn't seem to be at %dbps\n",speeds[speed]);
     }
     
   }
