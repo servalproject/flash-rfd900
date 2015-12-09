@@ -535,7 +535,7 @@ int main(int argc,char **argv)
 	unsigned int checksum[64];
 
 	// clear out any queued data first
-	int r=read(fd,reply,256); reply[256]=0;
+	int r=read(fd,reply,8192); reply[8192]=0;
 	// send !F
 	write(fd,"!F",2);
 	usleep(200000);
