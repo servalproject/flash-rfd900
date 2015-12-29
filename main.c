@@ -47,6 +47,8 @@
 #define PARAM_ERASE	0x29
 #define REBOOT		0x30
 
+int first_speed=-1;
+
 int twentyfourbitaddressing=0;
 
 int set_nonblock(int fd)
@@ -447,6 +449,34 @@ long long gettime_ms()
   return nowtv.tv_sec * 1000LL + nowtv.tv_usec / 1000;
 }
 
+int change_radio_to(int fd,int speed)
+{
+  char *cmd=NULL;
+  switch (speed) {
+  case 57600: cmd="ATS1=57\r\n"; break;
+  case 115200: cmd="ATS1=115\r\n"; break;
+  case 230400: cmd="ATS1=230\r\n"; break;
+  default:
+    printf("Illegal speed: %dpbs (bust be 57600,115200 or 230400)\n",speed);
+  }
+  
+  write(fd,cmd,strlen(cmd));
+  sleep(1);
+  cmd="AT&W\r\n";
+  write(fd,cmd,strlen(cmd));
+  sleep(1);
+  cmd="ATZ\r\n";	  
+  write(fd,cmd,strlen(cmd));
+  sleep(1);
+  
+  // Go back to looking for modem at 115200
+  printf("Changing modem to %dbps (original speed was %d)\n",
+	 speed,first_speed);
+
+  return 0;
+}
+
+
 int main(int argc,char **argv)
 {
   int fail=0;
@@ -568,10 +598,12 @@ int main(int argc,char **argv)
 		   &checksum[0x38],&checksum[0x39],&checksum[0x3a],&checksum[0x3b],
 		   &checksum[0x3c],&checksum[0x3d],&checksum[0x3e],&checksum[0x3f]
 		   );
-	printf("Found %d fields.\n",fields);
+	printf("Found %d fields @ %dbps.\n",fields,speeds[speed]);
 	
 	if (fields==(5+64)) {
 	  printf("Successfully parsed HASH response.\n");
+	  if (first_speed==-1) first_speed=speeds[speed];
+
 	  ihex=load_firmware(argv[1],id,freq);
 	  
 	  unsigned int newhash1,newhash2;
@@ -596,6 +628,12 @@ int main(int argc,char **argv)
 
 	  if ((!different)&&(!force)) {
 	    printf("Flash ROM matched via checksum: nothing to do.\n");
+	    // ... except to make sure that the modem is set back to default speed
+	    if ((first_speed!=-1)&&(speeds[speed]!=first_speed)) {
+	      // Return speed to original
+	      change_radio_to(fd,230400);
+	    }
+	    
 	    exit(0);
 	  }
 	  if (different) force=1;
@@ -622,7 +660,10 @@ int main(int argc,char **argv)
 	  int r=read(fd,buffer,1);
 	  if (r==1) {
 	    //	    printf("  read %02X\n",buffer[0]);
-	    if ((buffer[0]=='K') && (last_char == 'O')) state=2; else state=0;
+	    if ((buffer[0]=='K') && (last_char == 'O')) {
+	      state=2;
+	      if (first_speed==-1) first_speed=speeds[speed];
+	    } else state=0;
 	    last_char = buffer[0];
 	    if (state==2) break;
 	  } else usleep(10000);
@@ -635,19 +676,7 @@ int main(int argc,char **argv)
 	  if (speeds[speed]==115200) {
 	    write(fd,cmd,strlen(cmd));
 	  } else {
-	    char *cmd="ATS1=115\r\n";
-	    write(fd,cmd,strlen(cmd));
-	    sleep(1);
-	    cmd="AT&W\r\n";
-	    write(fd,cmd,strlen(cmd));
-	    sleep(1);
-	    cmd="ATZ\r\n";	  
-	    write(fd,cmd,strlen(cmd));
-	    sleep(1);
-
-	    // Go back to looking for modem at 115200
-	    printf("Changing modem from %d to 115200bps\n",
-		   speeds[speed]);
+	    change_radio_to(fd,115200);
 	    speed=-1; continue;
 	  }
 	  
