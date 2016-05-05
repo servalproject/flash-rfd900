@@ -494,13 +494,22 @@ int main(int argc,char **argv)
   unsigned int hash1=1;
   ihex_recordset_t *ihex=NULL;
 
+  int exit_speed=0;
+  
   
   if ((argc<3|| argc>4)
       ||(argc==4&&(strcasecmp(argv[3],"force")
-		   &&strcasecmp(argv[3],"verify")))) {
-    fprintf(stderr,"usage: flash900 <firmware> <serial port> [force]\n");
+		   &&strcasecmp(argv[3],"verify")
+		   &&strcasecmp(argv[3],"230400")
+		   &&strcasecmp(argv[3],"115200")
+		   &&strcasecmp(argv[3],"57600")
+		   )
+	 )) {
+    fprintf(stderr,"usage: flash900 <firmware> <serial port> [force|verify|230400|115200|57600]\n");
     exit(-1);
   }
+
+  if (argc==4) exit_speed=atoi(argv[3]);
 
   int fd=open(argv[2],O_RDWR);
   if (fd==-1) {
@@ -633,6 +642,8 @@ int main(int argc,char **argv)
 	      // Return speed to original
 	      change_radio_to(fd,230400);
 	    }
+	    // Or set radio speed to that desired
+	    if (exit_speed>0) change_radio_to(fd,exit_speed);
 	    
 	    exit(0);
 	  }
