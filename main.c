@@ -835,7 +835,7 @@ int main(int argc,char **argv)
       cmd[0]='0';
       write(fd,cmd,1);
       printf("Radio rebooted.\n");
-
+      
       break;
     } else {
       printf("Modem doesn't seem to be at %dbps\n",speeds[speed]);
@@ -843,5 +843,7 @@ int main(int argc,char **argv)
     
   }
 
+  if (exit_speed>0) change_radio_to(fd,exit_speed);
+  
   return 0;
 }
