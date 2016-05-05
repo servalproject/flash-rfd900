@@ -639,7 +639,10 @@ int main(int argc,char **argv)
 	    printf("Flash ROM matched via checksum: nothing to do.\n");
 	    // ... except to make sure that the modem is set back to default speed
 	    if ((first_speed!=-1)&&(speeds[speed]!=first_speed)) {
-	      // Return speed to original
+	      // now try to get to AT command mode
+	      sleep(1);
+	      write(fd,"+++",3);
+	      // switch radio speed and reboot	      
 	      change_radio_to(fd,230400);
 	    }
 	    // Or set radio speed to that desired
@@ -843,7 +846,13 @@ int main(int argc,char **argv)
     
   }
 
-  if (exit_speed>0) change_radio_to(fd,exit_speed);
+  if (exit_speed>0) {
+    // now try to get to AT command mode
+    sleep(1);
+    write(fd,"+++",3);
+    // switch radio speed and reboot
+    change_radio_to(fd,exit_speed);
+  }
   
   return 0;
 }
