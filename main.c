@@ -646,7 +646,12 @@ int main(int argc,char **argv)
 	      change_radio_to(fd,230400);
 	    }
 	    // Or set radio speed to that desired
-	    if (exit_speed>0) change_radio_to(fd,exit_speed);
+	    if (exit_speed>0) {
+	      // now try to get to AT command mode
+	      sleep(1);
+	      write(fd,"+++",3);
+	      change_radio_to(fd,exit_speed);
+	    }
 	    
 	    exit(0);
 	  }
