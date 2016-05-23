@@ -451,6 +451,19 @@ long long gettime_ms()
 
 int change_radio_to(int fd,int speed)
 {
+  char reply[8192+1];
+  int r=0;
+
+  printf("Changing modem to %dbps (original speed was %d)\n",
+	 speed,first_speed);
+  
+  sleep(2);
+  write(fd,"+++",3);
+  sleep(1);  
+  r=read(fd,reply,8192); reply[8192]=0;
+  if (r>0&&r<8192) reply[r]=0;
+  printf("+++ reply is '%s'\n",reply);
+
   char *cmd=NULL;
   switch (speed) {
   case 57600: cmd="ATS1=57\r\n"; break;
@@ -468,9 +481,13 @@ int change_radio_to(int fd,int speed)
   cmd="ATZ\r\n";	  
   write(fd,cmd,strlen(cmd));
   sleep(1);
+  r=read(fd,reply,8192); reply[8192]=0;
+  if (r>0&&r<8192) reply[r]=0;
+  printf("ATS/&W/Z reply is '%s'\n",reply);
+
   
   // Go back to looking for modem at 115200
-  printf("Changing modem to %dbps (original speed was %d)\n",
+  printf("Changed modem to %dbps (original speed was %d)\n",
 	 speed,first_speed);
 
   return 0;
@@ -578,7 +595,7 @@ int main(int argc,char **argv)
 	// send !F
 	write(fd,"!F",2);
 	usleep(200000);
-	read(fd,reply,8192); reply[8192]=0;
+	r=read(fd,reply,8192); reply[8192]=0;
 	if (r>0&&r<8192) reply[r]=0;
 	printf("!F reply is '%s'\n",reply);
 	// if !F we are probably in command mode
@@ -639,17 +656,11 @@ int main(int argc,char **argv)
 	    printf("Flash ROM matched via checksum: nothing to do.\n");
 	    // ... except to make sure that the modem is set back to default speed
 	    if ((first_speed!=-1)&&(speeds[speed]!=first_speed)) {
-	      // now try to get to AT command mode
-	      sleep(1);
-	      write(fd,"+++",3);
 	      // switch radio speed and reboot	      
 	      change_radio_to(fd,230400);
 	    }
 	    // Or set radio speed to that desired
 	    if (exit_speed>0) {
-	      // now try to get to AT command mode
-	      sleep(1);
-	      write(fd,"+++",3);
 	      change_radio_to(fd,exit_speed);
 	    }
 	    
