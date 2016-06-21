@@ -97,7 +97,9 @@ int switch_to_at_mode(int fd)
   }
   if (strstr(buffer,"OK")) {
     if (radio_in_at_command_mode(fd)) {
-      fprintf(stderr,"Yes, we are in command mode at 115200bps.\n");
+      fprintf(stderr,"Yes, we are in command mode.\n");
+      atmode=1;
+      onlinemode=0;
       return 0;
     } else {
       fprintf(stderr,"Okay, that's weird, I got some characters echoed, but we don't seem to be in command mode.\n");
@@ -130,6 +132,11 @@ int switch_to_bootloader(int fd)
     fprintf(stderr,"Saw extraneous bytes after sending AT&UPDATE... Probably not a good sign.\n");
   }
   setup_serial_port(fd,115200);
+
+  atmode=0;
+  bootloadermode=1;
+  onlinemode=0;
+  
   return 0;
   
 }
