@@ -7,6 +7,8 @@ extern int onlinemode;
 
 extern int first_speed;
 
+extern int debug;
+
 int setup_serial_port(int fd, int baud);
 int change_radio_to(int fd,int speed);
 int detect_speed(int fd);

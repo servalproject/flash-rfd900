@@ -16,8 +16,12 @@ int onlinemode=0;
 
 int first_speed=-1;
 
+int debug=0;
+
 int dump_bytes(char *msg,unsigned char *bytes,int length)
 {
+  if (!debug) return 0;
+  
   int i,j;
   fprintf(stderr,"%s:\n",msg);
   for(i=0;i<length;i+=16) {

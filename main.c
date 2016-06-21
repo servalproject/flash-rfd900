@@ -436,7 +436,7 @@ long long gettime_ms()
 
 int main(int argc,char **argv)
 {
-  printf("Version 20160621.1354.1\n");
+  printf("Version 20160621.1359.1\n");
   
   int fail=0;
   int force=0;
@@ -454,6 +454,12 @@ int main(int argc,char **argv)
   ihex_recordset_t *ihex=NULL;
 
   int exit_speed=0;
+
+  if ((argc>4)&&(!strcasecmp(argv[4],"debug")))
+    {
+      argc--;
+      debug=1;
+    }
   
   
   if ((argc<3|| argc>4)
