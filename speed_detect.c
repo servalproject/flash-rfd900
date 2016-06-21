@@ -92,7 +92,7 @@ int switch_to_online_mode(int fd)
     exit(-1);
   }
   
-  write(fd,"\rATO\r",5);
+  write(fd,"\r\nATO\r\n",7);
   sleep(1);
   clear_waiting_bytes(fd);
 
