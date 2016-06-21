@@ -16,10 +16,22 @@ int onlinemode=0;
 
 int first_speed=-1;
 
+int dump_bytes(char *msg,unsigned char *bytes,int length)
+{
+  fprintf(stderr,"%s:\n",msg);
+  for(int i=0;i<length;i+=16) {
+    fprintf(stderr,"%04X: ",i);
+    for(int j=0;j<16;j++) if (i+j<length) fprintf(stderr," %02X",bytes[i+j]);
+    fprintf(stderr,"\n");
+  }
+  return 0;
+}
+
 int get_radio_reply(int fd,char *buffer,int buffer_size,int delay_in_seconds)
 {
   sleep(delay_in_seconds);  
   int r=read(fd,buffer,buffer_size); buffer[buffer_size-1]=0;
+  if (r>0) dump_bytes("Bytes from radio",(unsigned char *)buffer,r);
   return r;
 }
 
@@ -40,6 +52,8 @@ int radio_in_at_command_mode(int fd)
   reply_bytes=get_radio_reply(fd,buffer,8192,1);
 
   // Send AT and expect OK
+  sleep(1);
+  clear_waiting_bytes(fd);
   write(fd,"AT\r",3);
   reply_bytes=get_radio_reply(fd,buffer,8192,1);
   if (!strstr(buffer,"OK")) {
