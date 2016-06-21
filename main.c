@@ -436,7 +436,7 @@ long long gettime_ms()
 
 int main(int argc,char **argv)
 {
-  printf("Version 20160621.1329.1\n");
+  printf("Version 20160621.1336.1\n");
   
   int fail=0;
   int force=0;
@@ -488,37 +488,10 @@ int main(int argc,char **argv)
   }
 
   // Radio is now at detectedspeed bps.
-      
-  if (!bootloadermode)
-    if (switch_to_bootloader(fd)) {
-      fprintf(stderr,"Failed to switch radio to bootloader mode.\n");
-      exit(-1);
-    }
-       
+  fprintf(stderr,"Detected radio speed and mode.\n");
+             
   unsigned char cmd[260]; 
-  
-  // Try to sync with bootloader
-  cmd[0]=GET_DEVICE;
-  cmd[1]=EOC;
-  write(fd,cmd,2);
-  unsigned char bootloaderdetect[4]={0x43,0x91,0x12,0x10};
-  int state=0;
-  long long timeout=gettime_ms()+1250;
-  while(gettime_ms()<timeout) {
-    unsigned char buffer[2];
-    int r=read(fd,buffer,1);
-    if (r==1) {
-      //	printf("  read %02X\n",buffer[0]);
-      if (buffer[0]==bootloaderdetect[state]) state++; else state=0;
-      // Also detect RFD900+ bootloader properly
-      if ((state==0)&&(buffer[0]==0x82)) state=1;
-      if (state==4) {
-	printf("Looks like we are in the bootloader already\n");
-	break;
-      }
-    }
-  }
-  
+
   if (bootloadermode)
     printf("Detected RFD900 is already in bootloader -- we have no choice but to reflash to exit boot loader mode.\n");
   else 
@@ -612,12 +585,12 @@ int main(int argc,char **argv)
       if (switch_to_bootloader(fd)) {
 	fprintf(stderr,"Failed to enter boot loader.\n");
 	exit(-1);
-      }
-	
+      }	
     }
 
+  // Radio has incorrect or unknown firmware version, and is already in bootloader
+  // mode for us.  Proceed with updating it.
   
-    
   // ask for board ID
   cmd[0]=GET_DEVICE;
   cmd[1]=EOC;
