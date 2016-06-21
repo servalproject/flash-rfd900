@@ -546,8 +546,8 @@ int main(int argc,char **argv)
       exit(-1);
     }
     
-    int speeds[8]={230400,115200,57600,38400,19200,9600,2400,1200};
-    int speed_count=8;
+    int speeds[3]={230400,115200,57600};
+    int speed_count=3;
 
   printf("Trying to get command mode...\n");
   int speed;
