@@ -30,6 +30,8 @@ int dump_bytes(char *msg,unsigned char *bytes,int length)
       if (i+j<length) {
 	if ((bytes[i+j]>=' ')&&(bytes[i+j]<0x7f))
 	  fprintf(stderr,"%c",bytes[i+j]);
+	else
+	  fprintf(stderr,".");
       }
     fprintf(stderr,"\n");
   }
