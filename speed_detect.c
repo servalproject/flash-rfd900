@@ -54,7 +54,7 @@ int get_radio_reply(int fd,char *buffer,int buffer_size,int delay_in_seconds)
 int clear_waiting_bytes(int fd)
 {
   char buffer[8192];
-  get_radio_reply(fd,buffer,8192,0);
+  while(get_radio_reply(fd,buffer,8192,0)>0) continue;
   return 0;
 }
 
