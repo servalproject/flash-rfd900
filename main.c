@@ -541,17 +541,28 @@ int main(int argc,char **argv)
     fprintf(stderr,"Could not open serial port '%s'\n",argv[2]);
     exit(-1);
   }
-    if (set_nonblock(fd)) {
-      fprintf(stderr,"Could not set serial port '%s' non-blocking\n",argv[2]);
+  if (set_nonblock(fd)) {
+    fprintf(stderr,"Could not set serial port '%s' non-blocking\n",argv[2]);
+    exit(-1);
+  }
+  
+  int speeds[3]={230400,115200,57600};
+  int speed_count=3;
+  
+  printf("Trying to get command mode...\n");
+
+  // Never get stuck in infinite loop: Exit after three minutes.
+  time_t timeout = time(0) + 180;
+
+  
+  int speed;
+  for(speed=0;speed<speed_count;speed++) {
+
+    if (time(0)>timeout) {
+      fprintf(stderr,"Global timeout reached: Quitting. Radio may not have been flashed.\n");
       exit(-1);
     }
     
-    int speeds[3]={230400,115200,57600};
-    int speed_count=3;
-
-  printf("Trying to get command mode...\n");
-  int speed;
-  for(speed=0;speed<speed_count;speed++) {
     // set port speed and non-blocking, and disable CTSRTS 
     if (setup_serial_port(fd,speeds[speed])) {
       fprintf(stderr,"Could not setup serial port '%s'\n",argv[2]);
