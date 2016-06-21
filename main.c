@@ -472,18 +472,26 @@ int change_radio_to(int fd,int speed)
   default:
     printf("Illegal speed: %dpbs (bust be 57600,115200 or 230400)\n",speed);
   }
+
+  printf("I think that I am in AT command mode.\n");
   
   write(fd,cmd,strlen(cmd));
   sleep(1);
+  r=read(fd,reply,8192); reply[8192]=0; if (r>0&&r<8192) reply[r]=0;
+  printf("%s reply is '%s'\n",cmd,reply);
+
   cmd="AT&W\r\n";
   write(fd,cmd,strlen(cmd));
   sleep(1);
+  r=read(fd,reply,8192); reply[8192]=0; if (r>0&&r<8192) reply[r]=0;
+  printf("%s reply is '%s'\n",cmd,reply);
+
   cmd="ATZ\r\n";	  
   write(fd,cmd,strlen(cmd));
   sleep(1);
   r=read(fd,reply,8192); reply[8192]=0;
   if (r>0&&r<8192) reply[r]=0;
-  printf("ATS/&W/Z reply is '%s'\n",reply);
+  printf("ATZ reply is '%s'\n",reply);
 
   
   // Go back to looking for modem at 115200
@@ -642,9 +650,10 @@ int main(int argc,char **argv)
 	  // that we can't rely upon.  This leaves the chance of some possible changes
 	  // not getting picked up -- however, since this method only applies to
 	  // the Serval Project, we can manage that risk there.
+	  // Don't check the first 4KB: It changes (is this where parameters get stored?)
 	  int different=0;
 	  int i;
-	  for(i=0;i<60;i++) {
+	  for(i=1;i<60;i++) {
 	    if (checksum[i]!=ichecksums[i]) {
 	      printf("Checksum for $%04x - $%04x does not match ($%04x vs $%04x)\n",
 		     i*0x400,(i+1)*0x400-1,checksum[i],ichecksums[i]);
