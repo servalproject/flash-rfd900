@@ -14,6 +14,8 @@ int detectedspeed=0;
 int bootloadermode=0;
 int onlinemode=0;
 
+int first_speed=-1;
+
 int get_radio_reply(int fd,char *buffer,int buffer_size,int delay_in_seconds)
 {
   sleep(delay_in_seconds);  
@@ -184,7 +186,7 @@ int detect_speed(int fd)
   int speed;
   int speeds[]={230400,57600,38400,19200,9600,2400,1200,-1};
   for(speed=0;speeds[speed]>0;speed++) {    
-    change_radio_to(fd,speeds[speed]);
+    setup_serial_port(fd,speeds[speed]);
 
     if (radio_in_at_command_mode(fd)) {
       fprintf(stderr,"Yes, we are in command mode at %dbps.\n",speeds[speed]);
@@ -206,4 +208,53 @@ int detect_speed(int fd)
   }
 
   return -1;
+}
+
+int change_radio_to(int fd,int speed)
+{
+  char reply[8192+1];
+  int r=0;
+
+  printf("Changing modem to %dbps (original speed was %d)\n",
+	 speed,first_speed);
+  
+  if (!atmode) {
+    if (switch_to_at_mode(fd)) {
+      fprintf(stderr,"Failed to switch radio to AT mode in preparation for setting radio speed.\n");
+      return -1;
+    }
+  }
+  
+  char *cmd=NULL;
+  switch (speed) {
+  case 57600: cmd="ATS1=57\r\n"; break;
+  case 115200: cmd="ATS1=115\r\n"; break;
+  case 230400: cmd="ATS1=230\r\n"; break;
+  default:
+    printf("Illegal speed: %dpbs (bust be 57600,115200 or 230400)\n",speed);
+  }
+  
+  write(fd,cmd,strlen(cmd));
+  sleep(1);
+  r=read(fd,reply,8192); reply[8192]=0; if (r>0&&r<8192) reply[r]=0;
+  printf("%s reply is '%s'\n",cmd,reply);
+
+  cmd="AT&W\r\n";
+  write(fd,cmd,strlen(cmd));
+  sleep(1);
+  r=read(fd,reply,8192); reply[8192]=0; if (r>0&&r<8192) reply[r]=0;
+  printf("%s reply is '%s'\n",cmd,reply);
+
+  cmd="ATZ\r\n";	  
+  write(fd,cmd,strlen(cmd));
+  sleep(3);  // Allow time for the radio to restart
+  r=read(fd,reply,8192); reply[8192]=0;
+  if (r>0&&r<8192) reply[r]=0;
+  printf("ATZ reply is '%s'\n",reply);
+
+  // Go back to looking for modem at 115200
+  printf("Changed modem to %dbps (original speed was %d)\n",
+	 speed,first_speed);
+
+  return 0;
 }

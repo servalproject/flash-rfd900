@@ -32,8 +32,6 @@
 #include "cintelhex.h"
 #include "flash900.h"
 
-int first_speed=-1;
-
 int twentyfourbitaddressing=0;
 
 int set_nonblock(int fd)
@@ -433,60 +431,6 @@ long long gettime_ms()
     return -1;
   return nowtv.tv_sec * 1000LL + nowtv.tv_usec / 1000;
 }
-
-int change_radio_to(int fd,int speed)
-{
-  char reply[8192+1];
-  int r=0;
-
-  printf("Changing modem to %dbps (original speed was %d)\n",
-	 speed,first_speed);
-  
-  sleep(2);
-  write(fd,"+++",3);
-  sleep(1);  
-  r=read(fd,reply,8192); reply[8192]=0;
-  if (r>0&&r<8192) reply[r]=0;
-  printf("+++ reply is '%s'\n",reply);
-
-  char *cmd=NULL;
-  switch (speed) {
-  case 57600: cmd="ATS1=57\r\n"; break;
-  case 115200: cmd="ATS1=115\r\n"; break;
-  case 230400: cmd="ATS1=230\r\n"; break;
-  default:
-    printf("Illegal speed: %dpbs (bust be 57600,115200 or 230400)\n",speed);
-  }
-
-  printf("I think that I am in AT command mode.\n");
-  
-  write(fd,cmd,strlen(cmd));
-  sleep(1);
-  r=read(fd,reply,8192); reply[8192]=0; if (r>0&&r<8192) reply[r]=0;
-  printf("%s reply is '%s'\n",cmd,reply);
-
-  cmd="AT&W\r\n";
-  write(fd,cmd,strlen(cmd));
-  sleep(1);
-  r=read(fd,reply,8192); reply[8192]=0; if (r>0&&r<8192) reply[r]=0;
-  printf("%s reply is '%s'\n",cmd,reply);
-
-  cmd="ATZ\r\n";	  
-  write(fd,cmd,strlen(cmd));
-  sleep(3);  // Allow time for the radio to restart
-  r=read(fd,reply,8192); reply[8192]=0;
-  if (r>0&&r<8192) reply[r]=0;
-  printf("ATZ reply is '%s'\n",reply);
-
-  // Go back to looking for modem at 115200
-  printf("Changed modem to %dbps (original speed was %d)\n",
-	 speed,first_speed);
-
-  
-
-  return 0;
-}
-
 
 int main(int argc,char **argv)
 {
