@@ -87,12 +87,7 @@ int switch_to_at_mode(int fd)
   char buffer[8192];
 
   sleep(2);
-  write_radio(fd,(unsigned char *)"+",1);
-  usleep(100000);
-  write_radio(fd,(unsigned char *)"+",1);
-  usleep(100000);
-  write_radio(fd,(unsigned char *)"+",1);
-  usleep(100000);
+  write_radio(fd,(unsigned char *)"+++",3);
   get_radio_reply(fd,buffer,8192,2);
   if (!strstr(buffer,"OK")) {
     // Try a second time with +++
