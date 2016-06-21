@@ -21,9 +21,24 @@ int dump_bytes(char *msg,unsigned char *bytes,int length)
   fprintf(stderr,"%s:\n",msg);
   for(int i=0;i<length;i+=16) {
     fprintf(stderr,"%04X: ",i);
-    for(int j=0;j<16;j++) if (i+j<length) fprintf(stderr," %02X",bytes[i+j]);
+    for(int j=0;j<16;j++)
+      if (i+j<length) fprintf(stderr," %02X",bytes[i+j]);
+      else fprintf(stderr,"   ");
+    fprintf(stderr,"  ");
+    for(int j=0;j<16;j++)
+      if (i+j<length) {
+	if ((bytes[i+j]>=' ')&&(bytes[i+j]<0x7f))
+	  fprintf(stderr,"%c",bytes[i+j]);
+      }
     fprintf(stderr,"\n");
   }
+  return 0;
+}
+
+int write_radio(int fd,unsigned char *bytes,int count)
+{
+  write(fd,bytes,count);
+  dump_bytes("Wrote to radio",bytes,count);
   return 0;
 }
 
@@ -48,13 +63,13 @@ int radio_in_at_command_mode(int fd)
   char buffer[8192];
   
   // Erase the partially typed command and be ready to type a new one
-  write(fd,"\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\r",17);
+  write_radio(fd,(unsigned char *)"\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\r",17);
   reply_bytes=get_radio_reply(fd,buffer,8192,1);
 
   // Send AT and expect OK
   sleep(1);
   clear_waiting_bytes(fd);
-  write(fd,"AT\r",3);
+  write_radio(fd,(unsigned char *)"AT\r",3);
   reply_bytes=get_radio_reply(fd,buffer,8192,1);
   if (!strstr(buffer,"OK")) {
     printf("Got OK reply to AT, so assuming that we are in command mode.\n");
@@ -71,7 +86,7 @@ int switch_to_at_mode(int fd)
   char buffer[8192];
 
   sleep(2);
-  write(fd,"+++",3);
+  write_radio(fd,(unsigned char *)"+++",3);
   reply_bytes=get_radio_reply(fd,buffer,8192,2);
   if (strstr(buffer,"OK")) {
     if (radio_in_at_command_mode(fd)) {
@@ -100,7 +115,7 @@ int switch_to_bootloader(int fd)
   printf("Switching to boot loader...\n");
   clear_waiting_bytes(fd);
   char *cmd="AT&UPDATE\r\n";
-  write(fd,cmd,strlen(cmd));
+  write_radio(fd,(unsigned char *)cmd,strlen(cmd));
   char buffer[8192];
   int reply_bytes;
   reply_bytes=get_radio_reply(fd,buffer,8192,1);
@@ -153,9 +168,9 @@ int detect_speed(int fd)
 
   // Clear any pending bootloader command
   unsigned char cmd[260]; bzero(&cmd[0],260);
-  write(fd,cmd,260);
+  write_radio(fd,(unsigned char *)cmd,260);
   
-  write(fd," \" ",3);
+  write_radio(fd,(unsigned char *)" \" ",3);
   reply_bytes=get_radio_reply(fd,buffer,8192,1);
   if ((reply_bytes==4)&&(buffer[2]==INSYNC)&&(buffer[3]==OK)) {
     // Got a valid bootloader string.
@@ -248,19 +263,19 @@ int change_radio_to(int fd,int speed)
     printf("Illegal speed: %dpbs (bust be 57600,115200 or 230400)\n",speed);
   }
   
-  write(fd,cmd,strlen(cmd));
+  write_radio(fd,(unsigned char *)cmd,strlen(cmd));
   sleep(1);
   r=read(fd,reply,8192); reply[8192]=0; if (r>0&&r<8192) reply[r]=0;
   printf("%s reply is '%s'\n",cmd,reply);
 
   cmd="AT&W\r\n";
-  write(fd,cmd,strlen(cmd));
+  write_radio(fd,(unsigned char *)cmd,strlen(cmd));
   sleep(1);
   r=read(fd,reply,8192); reply[8192]=0; if (r>0&&r<8192) reply[r]=0;
   printf("%s reply is '%s'\n",cmd,reply);
 
   cmd="ATZ\r\n";	  
-  write(fd,cmd,strlen(cmd));
+  write_radio(fd,(unsigned char *)cmd,strlen(cmd));
   sleep(3);  // Allow time for the radio to restart
   r=read(fd,reply,8192); reply[8192]=0;
   if (r>0&&r<8192) reply[r]=0;
