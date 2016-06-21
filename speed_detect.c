@@ -18,14 +18,15 @@ int first_speed=-1;
 
 int dump_bytes(char *msg,unsigned char *bytes,int length)
 {
+  int i,j;
   fprintf(stderr,"%s:\n",msg);
-  for(int i=0;i<length;i+=16) {
+  for(i=0;i<length;i+=16) {
     fprintf(stderr,"%04X: ",i);
-    for(int j=0;j<16;j++)
+    for(j=0;j<16;j++)
       if (i+j<length) fprintf(stderr," %02X",bytes[i+j]);
       else fprintf(stderr,"   ");
     fprintf(stderr,"  ");
-    for(int j=0;j<16;j++)
+    for(j=0;j<16;j++)
       if (i+j<length) {
 	if ((bytes[i+j]>=' ')&&(bytes[i+j]<0x7f))
 	  fprintf(stderr,"%c",bytes[i+j]);
@@ -59,18 +60,17 @@ int clear_waiting_bytes(int fd)
 
 int radio_in_at_command_mode(int fd)
 {
-  int reply_bytes;
   char buffer[8192];
   
   // Erase the partially typed command and be ready to type a new one
   write_radio(fd,(unsigned char *)"\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\r",17);
-  reply_bytes=get_radio_reply(fd,buffer,8192,1);
+  get_radio_reply(fd,buffer,8192,1);
 
   // Send AT and expect OK
   sleep(1);
   clear_waiting_bytes(fd);
   write_radio(fd,(unsigned char *)"AT\r",3);
-  reply_bytes=get_radio_reply(fd,buffer,8192,1);
+  get_radio_reply(fd,buffer,8192,1);
   if (!strstr(buffer,"OK")) {
     printf("Got OK reply to AT, so assuming that we are in command mode.\n");
     return 1;
@@ -82,12 +82,11 @@ int radio_in_at_command_mode(int fd)
 
 int switch_to_at_mode(int fd)
 {
-  int reply_bytes;
   char buffer[8192];
 
   sleep(2);
   write_radio(fd,(unsigned char *)"+++",3);
-  reply_bytes=get_radio_reply(fd,buffer,8192,2);
+  get_radio_reply(fd,buffer,8192,2);
   if (strstr(buffer,"OK")) {
     if (radio_in_at_command_mode(fd)) {
       fprintf(stderr,"Yes, we are in command mode at 115200bps.\n");
