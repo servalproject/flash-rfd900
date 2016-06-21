@@ -436,7 +436,7 @@ long long gettime_ms()
 
 int main(int argc,char **argv)
 {
-  printf("Version 20160621.1336.1\n");
+  printf("Version 20160621.1341.1\n");
   
   int fail=0;
   int force=0;
@@ -499,6 +499,8 @@ int main(int argc,char **argv)
       if (atmode) {
 	// Switch to online mode to ask the radio what firmware version it has
 	write(fd,"\rATO\r",5);
+	sleep(1);
+	clear_waiting_bytes(fd);
       }
       
       printf("Checking if radio supports !F for fast ID of firmware\n");
