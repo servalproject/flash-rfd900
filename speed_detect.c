@@ -71,7 +71,7 @@ int radio_in_at_command_mode(int fd)
   clear_waiting_bytes(fd);
   write_radio(fd,(unsigned char *)"AT\r",3);
   get_radio_reply(fd,buffer,8192,1);
-  if (!strstr(buffer,"OK")) {
+  if (strstr(buffer,"OK")) {
     printf("Got OK reply to AT, so assuming that we are in command mode.\n");
     return 1;
   } else {
