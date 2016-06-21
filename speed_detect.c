@@ -82,8 +82,32 @@ int radio_in_at_command_mode(int fd)
   }
 }
 
+int switch_to_online_mode(int fd)
+{
+  fprintf(stderr,"Switching to online mode.\n");
+  
+  if (onlinemode) return 0;
+  if (bootloadermode) {
+    fprintf(stderr,"I can't reliably switch to online mode from the bootloader.\n");
+    exit(-1);
+  }
+  
+  write(fd,"\rATO\r",5);
+  sleep(1);
+  clear_waiting_bytes(fd);
+
+  onlinemode=1;
+  atmode=0;
+  bootloadermode=0;
+  
+  return 0;
+}
+
 int switch_to_at_mode(int fd)
 {
+  fprintf(stderr,"Attempting to switch to AT command mode.\n");
+
+  
   char buffer[8192];
 
   sleep(2);
@@ -111,6 +135,8 @@ int switch_to_at_mode(int fd)
 
 int switch_to_bootloader(int fd)
 {
+  fprintf(stderr,"Attempting to switch to bootloader mode.\n");
+  
   if (bootloadermode) return 0;
 
   if (!atmode) {

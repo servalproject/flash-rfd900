@@ -12,6 +12,8 @@ int change_radio_to(int fd,int speed);
 int detect_speed(int fd);
 int switch_to_bootloader(int fd);
 int clear_waiting_bytes(int fd);
+int switch_to_online_mode(int fd);
+
 
 // RFD900 boot-loader commands
 #define NOP		0x00
