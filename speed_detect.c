@@ -87,6 +87,12 @@ int switch_to_at_mode(int fd)
   sleep(2);
   write_radio(fd,(unsigned char *)"+++",3);
   get_radio_reply(fd,buffer,8192,2);
+  if (!strstr(buffer,"OK")) {
+    // Try a second time with +++
+    sleep(2);
+    write_radio(fd,(unsigned char *)"+++",3);
+    get_radio_reply(fd,buffer,8192,2);
+  }
   if (strstr(buffer,"OK")) {
     if (radio_in_at_command_mode(fd)) {
       fprintf(stderr,"Yes, we are in command mode at 115200bps.\n");
