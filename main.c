@@ -434,6 +434,8 @@ long long gettime_ms()
 
 int main(int argc,char **argv)
 {
+  printf("Version 20160621.1256.1\n");
+  
   int fail=0;
   int force=0;
   int verify=0;
