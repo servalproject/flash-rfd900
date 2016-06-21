@@ -168,7 +168,7 @@ int detect_speed(int fd)
   char buffer[8192];
   
   // Start at 115200
-  setup_serial_port(fd,B115200);
+  setup_serial_port(fd,115200);
   clear_waiting_bytes(fd);
 
   // Clear any pending bootloader command

@@ -118,6 +118,8 @@ int setup_serial_port(int fd, int baud)
    
   set_nonblock(fd);
 
+  fprintf(stderr,"Set serial port to %dbps\n",baud);
+  
   return 0;
 }
 
@@ -434,7 +436,7 @@ long long gettime_ms()
 
 int main(int argc,char **argv)
 {
-  printf("Version 20160621.1319.1\n");
+  printf("Version 20160621.1325.1\n");
   
   int fail=0;
   int force=0;
