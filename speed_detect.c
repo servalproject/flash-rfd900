@@ -161,13 +161,20 @@ int switch_to_bootloader(int fd)
   if (reply_bytes>strlen(cmd)) {
     fprintf(stderr,"Saw extraneous bytes after sending AT&UPDATE... Probably not a good sign.\n");
   }
-  setup_serial_port(fd,115200);
 
-  atmode=0;
-  bootloadermode=1;
-  onlinemode=0;
+  if (!strcmp(cmd,buffer)) {
+    fprintf(stderr,"Looks like we have switched to the bootloader from AT command mode.\n");
+    setup_serial_port(fd,115200);
+
+    atmode=0;
+    bootloadermode=1;
+    onlinemode=0;
   
-  return 0;
+    return 0;
+  } else {
+    fprintf(stderr,"Saw '%s' instead of '%s' when trying to switch to bootloader... Probably not a good sign.\n",buffer,cmd);
+    return -1;
+  }
   
 }
 
@@ -261,6 +268,9 @@ int detect_speed(int fd)
   for(speed=0;speeds[speed]>0;speed++) {    
     setup_serial_port(fd,speeds[speed]);
 
+    // Check if we are in the bootloader already
+    
+    
     if (radio_in_at_command_mode(fd)) {
       fprintf(stderr,"Yes, we are in command mode at %dbps.\n",speeds[speed]);
       detectedspeed=speeds[speed];
@@ -277,7 +287,22 @@ int detect_speed(int fd)
       atmode=1;
       onlinemode=0;
       return 0;
-    }    
+    }
+
+    // We have seen a bug where the radio is in AT command mode, but is unable
+    // to writing anything out from there, except echo commands back.
+    // It does, however, respond to AT&UPDATE in that mode, so we can issue
+    // AT&UPDATE, and then check if we are in the bootloader.
+    if (!atmode) {
+      atmode=1;
+      if (switch_to_bootloader(fd)) {
+	atmode=0;
+      } else {
+	// success
+	return 0;
+      }
+    }
+    
   }
 
   return -1;
