@@ -125,6 +125,7 @@ int setup_serial_port(int fd, int baud)
 
 int next_char(int fd)
 {
+  fsync(fd);
   int w=0;
   time_t timeout=time(0)+10;
   while(time(0)<timeout) {
@@ -140,6 +141,7 @@ int next_char(int fd)
 
 void expect_insync(int fd)
 {
+  fsync(fd);
   int c=next_char(fd);
   if (c!=INSYNC) {
     fprintf(stderr,"\nFailed to synchronise (saw $%02x instead of $%02x)\n",c,INSYNC);
@@ -150,6 +152,7 @@ void expect_insync(int fd)
 
 void expect_ok(int fd)
 {
+  fsync(fd);
   if (next_char(fd)!=OK) {
     fprintf(stderr,"\nFailed to receive OK.\n");
     write(fd,"0",1);
