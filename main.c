@@ -39,6 +39,8 @@ long long gettime_ms();
 long long last_write_time=0;
 long long latency=0;
 
+int verify_against_buffer(ihex_recordset_t *ihex,unsigned char *buffer, int verbose);
+
 int set_nonblock(int fd)
 {
   int flags;
@@ -439,53 +441,31 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 	}
 	
 	int j;
-	// write 32 bytes at a time
-	for(j=0;j<ihex->ihrs_records[i].ihr_length;j+=max)
-	  {
-	    // work out how big this piece is
-	    int length=max;
-	    if (j+length>ihex->ihrs_records[i].ihr_length) {
-	      // printf("  clipping read from $%02x\n",length);
-	      length=ihex->ihrs_records[i].ihr_length-j;
-	    }
-	    
-	    printf("\rRange $%04x - $%04x (len=$%02x)\r",
-		   ihex->ihrs_records[i].ihr_address+j,
-		   ihex->ihrs_records[i].ihr_address+j+length-1,length);
-	    fflush(stdout);
-
-	    if (writeP) {
+	// write 32 bytes at a time.
+	// (but do all writing before verification, so that we avoid additional
+	// USB serial latencies by continually adjusting the flash address.  This
+	// also allows us to verify 255 bytes at a time, instead of just 32.)
+	if (writeP) {
+	  set_flash_addr(fd,ihex->ihrs_records[i].ihr_address);
+	  for(j=0;j<ihex->ihrs_records[i].ihr_length;j+=max)
+	    {
+	      // work out how big this piece is
+	      int length=max;
+	      if (j+length>ihex->ihrs_records[i].ihr_length) {
+		// printf("  clipping read from $%02x\n",length);
+		length=ihex->ihrs_records[i].ihr_length-j;
+	      }
+	      
+	      printf("\rWrite $%04x - $%04x (len=$%02x)     \r",
+		     ihex->ihrs_records[i].ihr_address+j,
+		     ihex->ihrs_records[i].ihr_address+j+length-1,length);
+	      fflush(stdout);
+	      
 	      // Write to flash
-	      set_flash_addr_async(fd,ihex->ihrs_records[i].ihr_address+j);  
 	      write_flash_async(fd,&ihex->ihrs_records[i].ihr_data[j],length);
 	      expect_insync(fd); expect_ok(fd);
-	      expect_insync(fd); expect_ok(fd);
 	    }
-	    
-	    // Read back from flash and verify.
-	    unsigned char buffer[length];
-	    set_flash_addr_async(fd,ihex->ihrs_records[i].ihr_address+j);  
-	    request_flash_read(fd,buffer,length);
-
-	    // Now service those async requests
-	    // 3. Acknowledge set_flash_addr_async()
-	    expect_insync(fd); expect_ok(fd);
-	    // 4. Read bytes
-	    flash_read_requested_bytes(fd,buffer,length);
-	    
-	    int k;
-	    for(k=0;k<length;k++)
-	      if (ihex->ihrs_records[i].ihr_data[j+k]
-		  !=buffer[k])
-		{
-		  // Verify error
-		  fprintf(stderr,"\nVerify error at $%04x"
-			  " : expected $%02x, but read $%02x\n",
-			  ihex->ihrs_records[i].ihr_address+j+k,
-			  ihex->ihrs_records[i].ihr_data[j+k],buffer[k]);
-		  fail=1;
-		}
-	  }
+	}
       }
   printf("\n");
   if (fail) {
@@ -715,7 +695,7 @@ int main(int argc,char **argv)
     unsigned char buffer[65536];
     printf("Bulk reading from flash...\n");
     read_64kb_flash(fd,buffer);
-    write_64kb("fromradio.bin",buffer);
+    // write_64kb("fromradio.bin",buffer);
     printf("Read all 64KB flash. Now verifying...\n");
     unsigned int newhash1,newhash2;
     unsigned char ibuffer[65536];
@@ -724,45 +704,7 @@ int main(int argc,char **argv)
     write_64kb("fromhex.bin",ibuffer);
     calculate_hash(ibuffer,ichecksums,start,end,&newhash1,&newhash2);
 
-    // Only check $0000-$F7FD, as the rest is boot loader or other stuff.
-    // (Is $F7FE-$F7FF for non-volatile variable storage or something?
-    // it seems to never be set right after restart, but verifies back fine
-    // when actually writing).
-    // XXX - Actually, the AT&UPDATE command clears those bytes, so they will
-    // always be wrong, but the radio won't boot until they are set again.
-    // So we are stuck with this, until we can add commands to our CSMA firmware to
-    // allow reading of FLASH memory without entering the bootloader.
-    int i;
-    for(i=0;i<ihex->ihrs_count;i++)
-      if (ihex->ihrs_records[i].ihr_type==0x00)
-	// if (ihex->ihrs_records[i].ihr_address<0xF7FE)
-	{
-	  if (fail&&(!verify)) break;
-		
-	  if (memcmp(&buffer[ihex->ihrs_records[i].ihr_address],
-		     ihex->ihrs_records[i].ihr_data,
-		     ihex->ihrs_records[i].ihr_length)) {
-	    fail=1;
-	    if (verify) {
-	      printf("Verify error in range $%04x - $%04x\n",
-		     ihex->ihrs_records[i].ihr_address,
-		     ihex->ihrs_records[i].ihr_address
-		     +ihex->ihrs_records[i].ihr_length-1);
-	      {
-		int j;
-		printf("Expected content:");
-		for(j=0;j<ihex->ihrs_records[i].ihr_length;j++)
-		  printf(" %02x",ihex->ihrs_records[i].ihr_data[j]);
-		printf("\n");
-		printf("Read from flash:");
-		for(j=0;j<ihex->ihrs_records[i].ihr_length;j++)
-		  printf(" %02x",buffer[ihex->ihrs_records[i].ihr_address+j]);
-		printf("\n");
-	      }
-	    }
-	  }
-	}
-	
+    fail=verify_against_buffer(ihex,buffer,1);	
   }
   if ((force||fail)&&(!verify))
     {
@@ -779,6 +721,12 @@ int main(int argc,char **argv)
       // Write ROM
       printf("Flash erased, now writing new firmware.\n");
       write_or_verify_flash(fd,ihex,1);
+
+      // Verify that we wrote it correctly
+      unsigned char buffer[65536];
+      printf("Verifying new firmware.\n");
+      read_64kb_flash(fd,buffer);
+      verify_against_buffer(ihex,buffer,1);
     }
 
   // Reboot radio
@@ -787,4 +735,51 @@ int main(int argc,char **argv)
   printf("Radio rebooted.\n");
       
   return 0;
+}
+
+int verify_against_buffer(ihex_recordset_t *ihex,unsigned char *buffer, int verbose)
+{
+  int i;
+
+  // Only check $0000-$F7FD, as the rest is boot loader or other stuff.
+  // (Is $F7FE-$F7FF for non-volatile variable storage or something?
+  // it seems to never be set right after restart, but verifies back fine
+  // when actually writing).
+  // XXX - Actually, the AT&UPDATE command clears those bytes, so they will
+  // always be wrong, but the radio won't boot until they are set again.
+  // So we are stuck with this, until we can add commands to our CSMA firmware to
+  // allow reading of FLASH memory without entering the bootloader.
+
+  int fail=0;
+  
+  for(i=0;i<ihex->ihrs_count;i++)
+    if (ihex->ihrs_records[i].ihr_type==0x00)
+      // if (ihex->ihrs_records[i].ihr_address<0xF7FE)
+      {
+	if (fail&&(verbose<2)) break;
+	
+	if (memcmp(&buffer[ihex->ihrs_records[i].ihr_address],
+		   ihex->ihrs_records[i].ihr_data,
+		   ihex->ihrs_records[i].ihr_length)) {
+	  fail=1;
+	  if (verbose) {
+	    printf("Verify error in range $%04x - $%04x\n",
+		   ihex->ihrs_records[i].ihr_address,
+		   ihex->ihrs_records[i].ihr_address
+		   +ihex->ihrs_records[i].ihr_length-1);
+	    {
+	      int j;
+	      printf("Expected content:");
+	      for(j=0;j<ihex->ihrs_records[i].ihr_length;j++)
+		printf(" %02x",ihex->ihrs_records[i].ihr_data[j]);
+	      printf("\n");
+	      printf("Read from flash:");
+	      for(j=0;j<ihex->ihrs_records[i].ihr_length;j++)
+		printf(" %02x",buffer[ihex->ihrs_records[i].ihr_address+j]);
+	      printf("\n");
+	    }
+	  }
+	}
+      }
+  return fail;
 }
