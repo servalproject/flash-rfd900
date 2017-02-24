@@ -34,6 +34,11 @@
 
 int twentyfourbitaddressing=0;
 
+long long gettime_ms();
+
+long long last_write_time=0;
+long long latency=0;
+
 int set_nonblock(int fd)
 {
   int flags;
@@ -133,13 +138,22 @@ int next_char(int fd)
     int r=read(fd,(char *)buffer,1);
     if (r==1) {
       // { printf("[%02x]",buffer[0]); fflush(stdout); }
+      if (last_write_time) {
+	latency=gettime_ms()-last_write_time;
+	last_write_time=0;
+	// fprintf(stderr,"serial latency = %lldms\n",latency);
+      }
+      
       return buffer[0];
     } else { usleep(1000); w++; }
   }
   return -1;
 }
 
-void expect_insync(int fd)
+#define expect_insync(X) _expect_insync(fd,__FILE__,__LINE__);
+#define expect_ok(X) _expect_ok(fd,__FILE__,__LINE__);
+
+void _expect_insync(int fd,char *file,int line)
 {
   fsync(fd);
   int c=next_char(fd);
@@ -150,7 +164,7 @@ void expect_insync(int fd)
   }
 }
 
-void expect_ok(int fd)
+void _expect_ok(int fd,char *file,int line)
 {
   fsync(fd);
   if (next_char(fd)!=OK) {
@@ -158,9 +172,10 @@ void expect_ok(int fd)
     write(fd,"0",1);
     exit(-3);
   }
+
 }
 
-void set_flash_addr(int fd,int addr)
+void set_flash_addr_async(int fd,int addr)
 {
   unsigned char cmd[8];
   cmd[0]=LOAD_ADDRESS;
@@ -172,30 +187,53 @@ void set_flash_addr(int fd,int addr)
     cmd[4]=EOC;
   }
   write(fd,cmd,4+twentyfourbitaddressing);
+  last_write_time=gettime_ms();
+}
 
+void set_flash_addr(int fd,int addr)
+{
+  set_flash_addr_async(fd,addr);
   expect_insync(fd);
   expect_ok(fd);
 }
 
-void read_flash(int fd,unsigned char *buffer,int length)
+void request_flash_read(int fd,unsigned char *buffer,int length)
 {
   unsigned char cmd[8];
   cmd[0]=READ_MULTI;
   cmd[1]=length;
   cmd[2]=EOC;
   write(fd,cmd,3);
-
+  last_write_time=gettime_ms();
+}
+ 
+void flash_read_requested_bytes(int fd,unsigned char *buffer, int length)
+{
+  int i;
+  
+  for(i=0;i<length;i++) {
+    buffer[i]=next_char(fd);
+  }
+  expect_insync(fd);
+  expect_ok(fd);  
+}
+ 
+void read_flash(int fd,unsigned char *buffer,int length)
+{
+  request_flash_read(fd,buffer,length);
+  
   int i;
 
   for(i=0;i<length;i++) {
     buffer[i]=next_char(fd);
   }
-
   expect_insync(fd);
   expect_ok(fd);  
 }
 
-void write_flash(int fd,unsigned char *buffer,int length)
+
+ 
+void write_flash_async(int fd,unsigned char *buffer,int length)
 {
   unsigned char cmd[8+length];
   cmd[0]=PROG_MULTI;
@@ -203,6 +241,12 @@ void write_flash(int fd,unsigned char *buffer,int length)
   memcpy(&cmd[2],buffer,length);
   cmd[2+length]=EOC;
   write(fd,cmd,3+length);
+  last_write_time=gettime_ms();
+}
+
+void write_flash(int fd,unsigned char *buffer,int length)
+{
+  write_flash_async(fd,buffer,length);
   expect_insync(fd);
   expect_ok(fd);  
 }
@@ -222,17 +266,36 @@ int read_64kb_flash(int fd,unsigned char buffer[65536])
   // really only read 63KB.
   // we pipe-line this to avoid USB serial delays, so the first read happens out
   // here, and subsequent read commands just before reading
-  for(a=0;a<0xfc00;a+=0xff) {
-    // work out transaction length
-    l=0xff;
-    if (a+l>0xfbff) 
-      { l=0xfbff-a+1; }
 
-    printf("\r$%04x - $%04x",a,a+l-1); fflush(stdout);
+  // We can't request all reads at once, but we can do 4 at a time.
+
+  // Read 0xfc bytes, so that we have exactly 256 reads to schedule.
+  // This makes it easier for us to pipeline things.
+  for(a=0;a<0xfc00;a+=(0xfc*4)) {
+    // work out transaction length
+    l=0xfc;
+
+    printf("\r$%04x - $%04x",a,a+l*4-1); fflush(stdout);
+
+    request_flash_read(fd,&buffer[a],l);
+    // sleep for 270 character transfers to allow read command to be fully
+    // processed, before dispatching the next, as the bootloader has no
+    // input buffer
+    usleep(270*100);
+    request_flash_read(fd,&buffer[a],l);
+    usleep(270*100);
+    request_flash_read(fd,&buffer[a],l);
+    usleep(270*100);
+    request_flash_read(fd,&buffer[a],l);
 
     // read data
-    read_flash(fd,&buffer[a],l);
+    flash_read_requested_bytes(fd,&buffer[a],l);
+    flash_read_requested_bytes(fd,&buffer[a+1*0xfc],l);
+    flash_read_requested_bytes(fd,&buffer[a+2*0xfc],l);
+    flash_read_requested_bytes(fd,&buffer[a+3*0xfc],l);
   }
+
+
   printf("\n");
   return 0;
 
@@ -393,14 +456,23 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 
 	    if (writeP) {
 	      // Write to flash
-	      set_flash_addr(fd,ihex->ihrs_records[i].ihr_address+j);  
-	      write_flash(fd,&ihex->ihrs_records[i].ihr_data[j],length);
+	      set_flash_addr_async(fd,ihex->ihrs_records[i].ihr_address+j);  
+	      write_flash_async(fd,&ihex->ihrs_records[i].ihr_data[j],length);
+	      expect_insync(fd); expect_ok(fd);
+	      expect_insync(fd); expect_ok(fd);
 	    }
 	    
 	    // Read back from flash and verify.
 	    unsigned char buffer[length];
-	    set_flash_addr(fd,ihex->ihrs_records[i].ihr_address+j);  
-	    read_flash(fd,buffer,length);
+	    set_flash_addr_async(fd,ihex->ihrs_records[i].ihr_address+j);  
+	    request_flash_read(fd,buffer,length);
+
+	    // Now service those async requests
+	    // 3. Acknowledge set_flash_addr_async()
+	    expect_insync(fd); expect_ok(fd);
+	    // 4. Read bytes
+	    flash_read_requested_bytes(fd,buffer,length);
+	    
 	    int k;
 	    for(k=0;k<length;k++)
 	      if (ihex->ihrs_records[i].ihr_data[j+k]
