@@ -8,12 +8,23 @@
 
 int eeprom_decode_data(char *msg,unsigned char *datablock)
 {
+  debug++; dump_bytes(msg,datablock,2048); debug--;
   return 0;
 }
 
 int eeprom_parse_line(char *line,unsigned char *datablock)
 {
-  fprintf(stderr,"Parsing [%s]\n",line);
+  int address;
+  int b[16];
+  if (sscanf(line,"EPR:%x : %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x",
+	     &address,
+	     &b[0],&b[1],&b[2],&b[3],
+	     &b[4],&b[5],&b[6],&b[7],
+	     &b[8],&b[9],&b[10],&b[11],
+	     &b[12],&b[13],&b[14],&b[15])==17) {
+    for(int i=0;i<16;i++) datablock[address+i]=b[i];
+  }
+  
   return 0;
 }
 
@@ -37,7 +48,6 @@ int eeprom_parse_output(int fd,unsigned char *datablock)
     } else {
       if ((buffer[i]=='E')&&(buffer[i+1]=='P')) {
 	line[0]='E'; line_len=1;
-	fprintf(stderr,"Beginning line...\n");
       }
     }
   }
@@ -131,12 +141,12 @@ int eeprom_program(int argc,char **argv)
 	}      
     }
   }
-  
-
-  eeprom_decode_data("Datablock for writing",datablock);
-  
+    
   if (argc==9) {
     // Write it
+
+    eeprom_decode_data("Datablock for writing",datablock);
+    
     // Use <addr>!g!y<data>!w sequence to write each 16 bytes
     char cmd[1024];
     int address;
@@ -158,18 +168,19 @@ int eeprom_program(int argc,char **argv)
 
   char cmd[1024];
   int address;
+  fprintf(stderr,"Reading data from EEPROM"); fflush(stderr);
   for(address=0;address<0x800;address+=0x80) {
     snprintf(cmd,1024,"%x!g",address);
     write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-    printf("%s\n",cmd);
     usleep(20000);
     snprintf(cmd,1024,"!E");
     write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-    printf("%s\n",cmd);
     usleep(300000);
     eeprom_parse_output(fd,verifyblock);
+    fprintf(stderr,"."); fflush(stderr);
   }
-  
+  fprintf(stderr,"\n"); fflush(stderr);
+    
   eeprom_decode_data("Datablock read from EEPROM",verifyblock);
   
   
