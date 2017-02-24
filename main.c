@@ -418,7 +418,7 @@ int read_64kb(char *filename,unsigned char *buffer)
 int write_to_flash(int fd,ihex_recordset_t *ihex,int writeP)
 {
   int max=255;
-  if (writeP) max=32;
+  if (writeP) max=64;
 
   int address_base=0x00000000;
   
