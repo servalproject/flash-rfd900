@@ -11,13 +11,37 @@ int eeprom_decode_data(char *msg,unsigned char *datablock)
   return 0;
 }
 
+int eeprom_parse_line(char *line,unsigned char *datablock)
+{
+  fprintf(stderr,"Parsing [%s]\n",line);
+  return 0;
+}
+
+char line[1024];
+int line_len=0;
+
 int eeprom_parse_output(int fd,unsigned char *datablock)
 {
   char buffer[16384];
   int count=get_radio_reply(fd,buffer,16384,0);
-  debug++;
-  dump_bytes("bytes read",(unsigned char *)buffer,count);
-  debug--;
+  
+  for(int i=0;i<count;i++) {
+    if (line_len) {
+      if (buffer[i]!='\r')
+	{ if (line_len<1000) line[line_len++]=buffer[i]; }
+      else {
+	line[line_len]=0;
+	eeprom_parse_line(line,datablock);
+	line_len=0;
+      }
+    } else {
+      if ((buffer[i]=='E')&&(buffer[i+1]=='P')) {
+	line[0]='E'; line_len=1;
+	fprintf(stderr,"Beginning line...\n");
+      }
+    }
+  }
+  if (line_len) eeprom_parse_line(line,datablock);
   
   return 0;
 }
@@ -93,7 +117,6 @@ int eeprom_program(int argc,char **argv)
     write_radio(fd,(unsigned char *)"0!g",3);
     usleep(20000);
     int count=get_radio_reply(fd,buffer,1024,0);
-    debug++; dump_bytes("!g reply",(unsigned char *)buffer,count); debug--;
     if (memmem(buffer,count,"EPRADDR=$0",10)) {
       fprintf(stderr,"Radio is ready.\n");
     } else {
@@ -143,7 +166,7 @@ int eeprom_program(int argc,char **argv)
     snprintf(cmd,1024,"!E");
     write_radio(fd,(unsigned char *)cmd,strlen(cmd));
     printf("%s\n",cmd);
-    usleep(200000);
+    usleep(300000);
     eeprom_parse_output(fd,verifyblock);
   }
   
