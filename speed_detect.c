@@ -173,6 +173,29 @@ int switch_to_bootloader(int fd)
     return 0;
   } else {
     fprintf(stderr,"Saw '%s' instead of '%s' when trying to switch to bootloader... Probably not a good sign.\n",buffer,cmd);
+
+    // ... but it might have worked, anyway.
+    
+    // Start at 115200
+    setup_serial_port(fd,115200);
+    clear_waiting_bytes(fd);
+    
+    // Clear any pending bootloader command
+    unsigned char cmd[260]; bzero(&cmd[0],260);
+    write_radio(fd,(unsigned char *)cmd,260);
+    
+    write_radio(fd,(unsigned char *)" \" ",3);
+    reply_bytes=get_radio_reply(fd,buffer,8192,1);
+    if ((reply_bytes==4)&&(buffer[2]==INSYNC)&&(buffer[3]==OK)) {
+      // Got a valid bootloader string.
+      detectedspeed=115200;
+      bootloadermode=1;
+      atmode=0;
+      onlinemode=0;
+      fprintf(stderr,"Radio is already in boot loader @ 115200\n");
+      return 0;
+    }    
+    
     return -1;
   }
   
