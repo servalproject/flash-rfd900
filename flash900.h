@@ -18,6 +18,9 @@ int switch_to_bootloader(int fd);
 int clear_waiting_bytes(int fd);
 int switch_to_online_mode(int fd);
 int try_bang_B(int fd);
+int eeprom_program(int argc,char **argv);
+int set_nonblock(int fd);
+int write_radio(int fd,unsigned char *bytes,int count);
 
 // RFD900 boot-loader commands
 #define NOP		0x00
