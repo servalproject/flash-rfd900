@@ -321,3 +321,31 @@ uint16_t ihex_fromhex16(uint8_t *i)
 	return (ihex_fromhex4(i[0]) << 12) + (ihex_fromhex4(i[1]) << 8) + 
 	       (ihex_fromhex4(i[2]) << 4) + ihex_fromhex4(i[3]);
 }
+
+void ihex_aggregate_records(ihex_recordset_t *ihex)
+{
+  int i=0;
+  while(i<(ihex->ihrs_count-1))
+    {
+      int end_addr=ihex->ihrs_records[i].ihr_address+ihex->ihrs_records[i].ihr_length;
+      int next_start=ihex->ihrs_records[i+1].ihr_address;
+      int len=ihex->ihrs_records[i].ihr_length;
+      int next_len=ihex->ihrs_records[i+1].ihr_length;
+      if (end_addr==next_start) {
+	// Merge records
+	uint8_t *merged_record=malloc(len+next_len);
+	bcopy(ihex->ihrs_records[i].ihr_data,merged_record,len);
+	bcopy(ihex->ihrs_records[i+1].ihr_data,&merged_record[len],next_len);
+	free(ihex->ihrs_records[i].ihr_data);
+	ihex->ihrs_records[i].ihr_data=merged_record;
+	ihex->ihrs_records[i].ihr_length+=next_len;
+	// Shuffle down and remove old record.
+	ihex->ihrs_count--;
+	free(ihex->ihrs_records[i+1].ihr_data);
+	bcopy(&ihex->ihrs_records[i+2],&ihex->ihrs_records[i+1],
+	      sizeof(ihex_record_t)*(ihex->ihrs_count-i-1));
+      } else
+	i++;
+    }
+  return;
+}

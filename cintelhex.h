@@ -191,6 +191,9 @@ uint8_t ihex_fromhex8(uint8_t *input);
 /// Parse 16-bit hex input.
 uint16_t ihex_fromhex16(uint8_t *input);
 
+// Merge records
+void ihex_aggregate_records(ihex_recordset_t *ihex);
+  
 #ifdef __cplusplus
 } // extern "C"
 #endif

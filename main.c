@@ -351,6 +351,8 @@ ihex_recordset_t *load_firmware(char *base,int id,int freq)
   }
     
   printf("Read %d IHEX records from firmware file\n",ihex->ihrs_count);
+  ihex_aggregate_records(ihex);
+  printf("(%d records remain after aggregation)\n",ihex->ihrs_count);
   
   // Sort IHEX records into ascending address order so that when we flash 
   // them we don't mess things up by writing the flash data in the wrong order 
