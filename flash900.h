@@ -21,6 +21,8 @@ int try_bang_B(int fd);
 int eeprom_program(int argc,char **argv);
 int set_nonblock(int fd);
 int write_radio(int fd,unsigned char *bytes,int count);
+int get_radio_reply(int fd,char *buffer,int buffer_size,int delay_in_seconds);
+int dump_bytes(char *m, unsigned char *b,int count);
 
 // RFD900 boot-loader commands
 #define NOP		0x00

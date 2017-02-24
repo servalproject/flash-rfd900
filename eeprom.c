@@ -3,6 +3,7 @@
 #include <sys/fcntl.h>
 #include <strings.h>
 #include <string.h>
+#include <unistd.h>
 #include "flash900.h"
 
 int eeprom_decode_data(char *msg,unsigned char *datablock)
@@ -12,6 +13,12 @@ int eeprom_decode_data(char *msg,unsigned char *datablock)
 
 int eeprom_parse_output(int fd,unsigned char *datablock)
 {
+  char buffer[16384];
+  int count=get_radio_reply(fd,buffer,16384,0);
+  debug++;
+  dump_bytes("bytes read",(unsigned char *)buffer,count);
+  debug--;
+  
   return 0;
 }
 
@@ -75,16 +82,33 @@ int eeprom_program(int argc,char **argv)
     fprintf(stderr,"Could not set serial port '%s' non-blocking\n",argv[2]);
     exit(-1);
   }
-  if (detect_speed(fd)) {
-    fprintf(stderr,"Could not detect radio speed and mode. Sorry.\n");
-    exit(-1);
+
+  // XXX - Short-circuit detection with ! command test to save time
+  {
+    setup_serial_port(fd,230400);
+    char buffer[1024];
+    clear_waiting_bytes(fd);
+    write_radio(fd,(unsigned char *)"0!g",3);
+    usleep(20000);
+    write_radio(fd,(unsigned char *)"0!g",3);
+    usleep(20000);
+    int count=get_radio_reply(fd,buffer,1024,0);
+    debug++; dump_bytes("!g reply",(unsigned char *)buffer,count); debug--;
+    if (memmem(buffer,count,"EPRADDR=$0",10)) {
+      fprintf(stderr,"Radio is ready.\n");
+    } else {
+      if (detect_speed(fd)) {
+	fprintf(stderr,"Could not detect radio speed and mode. Sorry.\n");
+	exit(-1);
+      }
+      if (atmode)
+	if (switch_to_online_mode(fd)) {
+	  fprintf(stderr,"Could not switch to online mode.\n");
+	  exit(-1);
+	}      
+    }
   }
   
-  if (atmode)
-    if (switch_to_online_mode(fd)) {
-      fprintf(stderr,"Could not switch to online mode.\n");
-      exit(-1);
-    }
 
   eeprom_decode_data("Datablock for writing",datablock);
   
@@ -94,7 +118,7 @@ int eeprom_program(int argc,char **argv)
     char cmd[1024];
     int address;
     for(address=0;address<0x800;address+=0x10) {
-      snprintf(cmd,1024,"%d!g!y",address);
+      snprintf(cmd,1024,"!y%x!g",address);
       write_radio(fd,(unsigned char *)cmd,strlen(cmd));
       // Now write data bytes, escaping ! as !.
       for(int j=0;j<0x10;j++) {
@@ -112,10 +136,16 @@ int eeprom_program(int argc,char **argv)
   char cmd[1024];
   int address;
   for(address=0;address<0x800;address+=0x80) {
-    snprintf(cmd,1024,"%d!g!E",address);
+    snprintf(cmd,1024,"%x!g",address);
     write_radio(fd,(unsigned char *)cmd,strlen(cmd));
+    printf("%s\n",cmd);
+    usleep(20000);
+    snprintf(cmd,1024,"!E");
+    write_radio(fd,(unsigned char *)cmd,strlen(cmd));
+    printf("%s\n",cmd);
+    usleep(200000);
+    eeprom_parse_output(fd,verifyblock);
   }
-  eeprom_parse_output(fd,verifyblock);
   
   eeprom_decode_data("Datablock read from EEPROM",verifyblock);
   
