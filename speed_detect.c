@@ -44,8 +44,9 @@ int dump_bytes(char *msg,unsigned char *bytes,int length)
 
 int write_radio(int fd,unsigned char *bytes,int count)
 {
-  write(fd,bytes,count);
-  dump_bytes("Wrote to radio",bytes,count);
+  int written=write(fd,bytes,count);
+  if (written!=count) fprintf(stderr,"WARNING: Short write.\n");
+  dump_bytes("Wrote to radio",bytes,written);
   return 0;
 }
 
@@ -140,6 +141,8 @@ int switch_to_at_mode(int fd)
 int switch_to_bootloader(int fd)
 {
   fprintf(stderr,"Attempting to switch to bootloader mode.\n");
+
+  try_bang_B(fd);
   
   if (bootloadermode) return 0;
 
@@ -199,6 +202,55 @@ int switch_to_bootloader(int fd)
     return -1;
   }
   
+}
+
+int try_bang_B(int fd)
+{
+    // Start at 115200
+    setup_serial_port(fd,115200);
+    clear_waiting_bytes(fd);
+    
+    // Clear any pending bootloader command
+    unsigned char cmd[260]; bzero(&cmd[0],260);
+    write_radio(fd,(unsigned char *)cmd,260);
+
+    // Then switch to 230400 and send !Cup!B
+    setup_serial_port(fd,230400);
+    write_radio(fd,(unsigned char *)"ATO\r\n",5);
+    clear_waiting_bytes(fd);
+    // No idea why we have to type this command sequence slowly.
+    // Perhaps !C can take more than one character read time to execute?
+    {
+      char *s="!Cup!B";
+      for(;*s;s++) {
+	write(fd,s,1);
+	usleep(50000);
+      }
+    }
+    clear_waiting_bytes(fd);
+
+    // Switch to bootloader speed
+    setup_serial_port(fd,115200);
+    
+    // Clear any pending bootloader command
+    write_radio(fd,(unsigned char *)cmd,260);
+    
+    clear_waiting_bytes(fd);
+
+    // Try to get OK & INSYNC
+    write_radio(fd,(unsigned char *)" \" ",3);
+    char buffer[8192];
+    int reply_bytes=get_radio_reply(fd,buffer,8192,1);
+    if ((reply_bytes==4)&&(buffer[2]==INSYNC)&&(buffer[3]==OK)) {
+      // Got a valid bootloader string.
+      detectedspeed=115200;
+      bootloadermode=1;
+      atmode=0;
+      onlinemode=0;
+      fprintf(stderr,"Radio is in boot loader @ 115200 (via !B)\n");
+      return 0;
+    }    
+    return 1;
 }
 
 int detect_speed(int fd)

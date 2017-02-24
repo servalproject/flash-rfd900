@@ -449,10 +449,8 @@ int write_to_flash(int fd,ihex_recordset_t *ihex,int writeP)
 	if (writeP) {
 	  if (last_flash_address!=ihex->ihrs_records[i].ihr_address) {
 	    set_flash_addr(fd,ihex->ihrs_records[i].ihr_address);
-	    printf("\nSet flash address to $%04x (was $%04x)\n",
-		   ihex->ihrs_records[i].ihr_address,last_flash_address);
 	    last_flash_address=ihex->ihrs_records[i].ihr_address;
-	  } // else printf("\nContinuing to write from $%04x\n",last_flash_address);
+	  }
 	  for(j=0;j<ihex->ihrs_records[i].ihr_length;j+=max)
 	    {
 	      // work out how big this piece is
@@ -553,9 +551,16 @@ int main(int argc,char **argv)
     fprintf(stderr,"Could not set serial port '%s' non-blocking\n",argv[2]);
     exit(-1);
   }
-  
+
   printf("Trying to detect speed and mode...\n");
   lap_time=gettime_ms();
+
+  if (force) {
+    // Try using !Cup!B command to drop direct to bootloader
+    try_bang_B(fd);
+  }
+  
+
   
   if (detect_speed(fd)) {
     fprintf(stderr,"Could not detect radio speed and mode. Sorry.\n");
