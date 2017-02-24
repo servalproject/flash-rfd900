@@ -424,6 +424,7 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 
   int i;
   int fail=0;
+  int last_flash_address=-1;
   for(i=0;i<ihex->ihrs_count;i++)
     if (ihex->ihrs_records[i].ihr_type==0x04) {
       // Set upper-16 bits of target address
@@ -446,7 +447,12 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 	// USB serial latencies by continually adjusting the flash address.  This
 	// also allows us to verify 255 bytes at a time, instead of just 32.)
 	if (writeP) {
-	  set_flash_addr(fd,ihex->ihrs_records[i].ihr_address);
+	  if (last_flash_address!=ihex->ihrs_records[i].ihr_address) {
+	    set_flash_addr(fd,ihex->ihrs_records[i].ihr_address);
+	    printf("\nSet flash address to $%04x (was $%04x)\n",
+		   ihex->ihrs_records[i].ihr_address,last_flash_address);
+	    last_flash_address=ihex->ihrs_records[i].ihr_address;
+	  } // else printf("\nContinuing to write from $%04x\n",last_flash_address);
 	  for(j=0;j<ihex->ihrs_records[i].ihr_length;j+=max)
 	    {
 	      // work out how big this piece is
@@ -464,6 +470,7 @@ int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
 	      // Write to flash
 	      write_flash_async(fd,&ihex->ihrs_records[i].ihr_data[j],length);
 	      expect_insync(fd); expect_ok(fd);
+	      last_flash_address+=length;
 	    }
 	}
       }
