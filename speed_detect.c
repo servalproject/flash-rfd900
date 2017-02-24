@@ -77,12 +77,16 @@ int radio_in_at_command_mode(int fd)
   sleep(1);
   clear_waiting_bytes(fd);
   write_radio(fd,(unsigned char *)"AT\r",3);
-  get_radio_reply(fd,buffer,8192,1);
+  int bytes=get_radio_reply(fd,buffer,8192,1);
   if (strstr(buffer,"OK")) {
     printf("Got OK reply to AT, so assuming that we are in command mode.\n");
     return 1;
   } else {
     printf("We don't seem to be in AT command mode.\n");
+    debug++;
+    dump_bytes("This is what I saw echoed back",
+	       (unsigned char *)buffer,bytes);
+    debug--;
     return 0;
   }
 }
@@ -207,6 +211,7 @@ int switch_to_bootloader(int fd)
 int try_bang_B(int fd)
 {
     // Start at 115200
+  int old_speed=last_baud;
     setup_serial_port(fd,115200);
     clear_waiting_bytes(fd);
     
@@ -249,7 +254,9 @@ int try_bang_B(int fd)
       onlinemode=0;
       fprintf(stderr,"Radio is in boot loader @ 115200 (via !B)\n");
       return 0;
-    }    
+    }
+
+    setup_serial_port(fd,old_speed);
     return 1;
 }
 

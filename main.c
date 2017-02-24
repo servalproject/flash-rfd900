@@ -61,6 +61,7 @@ int set_block(int fd)
   return 0;
 }
 
+int last_baud=115200;
 int setup_serial_port(int fd, int baud)
 {
   struct termios t;
@@ -126,6 +127,8 @@ int setup_serial_port(int fd, int baud)
   set_nonblock(fd);
 
   fprintf(stderr,"Set serial port to %dbps\n",baud);
+
+  last_baud=baud;
   
   return 0;
 }

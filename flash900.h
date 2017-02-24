@@ -7,6 +7,8 @@ extern int onlinemode;
 
 extern int first_speed;
 
+extern int last_baud;
+
 extern int debug;
 
 int setup_serial_port(int fd, int baud);
