@@ -531,6 +531,38 @@ int main(int argc,char **argv)
       argc--;
       debug=1;
     }
+
+  if (!strcmp(argv[1],"eeprom")) {
+    if (argc!=8) {
+      fprintf(stderr,"usage: flash900 eeprom <serial port> <user data file> <protected data file> <frequency> <txpower> <airspeed>\n");
+      exit(-1);
+    }
+    char *userdatafile=argv[3];
+    
+    int fd=open(argv[2],O_RDWR);
+      if (fd==-1) {
+	fprintf(stderr,"Could not open serial port '%s'\n",argv[2]);
+	exit(-1);
+      }
+      if (set_nonblock(fd)) {
+	fprintf(stderr,"Could not set serial port '%s' non-blocking\n",argv[2]);
+	exit(-1);
+      }
+      if (detect_speed(fd)) {
+	fprintf(stderr,"Could not detect radio speed and mode. Sorry.\n");
+	exit(-1);
+      }
+
+      if (atmode)
+	if (switch_to_online_mode(fd)) {
+	  fprintf(stderr,"Could not switch to online mode.\n");
+	  exit(-1);
+	}
+
+      
+      
+      return 0;      
+  }
   
   
   if ((argc<3|| argc>4)
