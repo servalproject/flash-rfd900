@@ -413,7 +413,7 @@ int read_64kb(char *filename,unsigned char *buffer)
 }
 
 
-int write_or_verify_flash(int fd,ihex_recordset_t *ihex,int writeP)
+int write_to_flash(int fd,ihex_recordset_t *ihex,int writeP)
 {
   int max=255;
   if (writeP) max=32;
@@ -517,6 +517,12 @@ int main(int argc,char **argv)
 
   int exit_speed=0;
 
+  long long lap_time=gettime_ms();
+  long long read_time=0;
+  long long write_time=0;
+  long long verify_time=0;
+  long long modem_time=0;
+
   if ((argc>4)&&(!strcasecmp(argv[4],"debug")))
     {
       argc--;
@@ -549,7 +555,8 @@ int main(int argc,char **argv)
   }
   
   printf("Trying to detect speed and mode...\n");
-
+  lap_time=gettime_ms();
+  
   if (detect_speed(fd)) {
     fprintf(stderr,"Could not detect radio speed and mode. Sorry.\n");
     exit(-1);
@@ -656,6 +663,8 @@ int main(int argc,char **argv)
       }	
     }
 
+  modem_time=gettime_ms()-lap_time; lap_time=gettime_ms();
+  
   // Radio has incorrect or unknown firmware version, and is already in bootloader
   // mode for us.  Proceed with updating it.
   
@@ -700,22 +709,25 @@ int main(int argc,char **argv)
   if (!force) {
     // read flash and compare with ihex records
     unsigned char buffer[65536];
-    printf("Bulk reading from flash...\n");
+    printf("Bulk reading from flash...\n");    
     read_64kb_flash(fd,buffer);
+    read_time=gettime_ms()-lap_time; lap_time=gettime_ms();
     // write_64kb("fromradio.bin",buffer);
     printf("Read all 64KB flash. Now verifying...\n");
     unsigned int newhash1,newhash2;
     unsigned char ibuffer[65536];
     unsigned int ichecksums[64];
     assemble_ihex(ihex,ibuffer);
-    write_64kb("fromhex.bin",ibuffer);
+    // write_64kb("fromhex.bin",ibuffer);
     calculate_hash(ibuffer,ichecksums,start,end,&newhash1,&newhash2);
 
-    fail=verify_against_buffer(ihex,buffer,1);	
+    fail=verify_against_buffer(ihex,buffer,1);
   }
   if ((force||fail)&&(!verify))
     {
       printf("\nFirmware differs: erasing and flashing...\n");
+
+      lap_time=gettime_ms();
 
       // Erase ROM
       printf("Erasing flash.\n");
@@ -727,20 +739,28 @@ int main(int argc,char **argv)
 
       // Write ROM
       printf("Flash erased, now writing new firmware.\n");
-      write_or_verify_flash(fd,ihex,1);
+      write_to_flash(fd,ihex,1);
+      write_time=gettime_ms()-lap_time; lap_time=gettime_ms();
 
       // Verify that we wrote it correctly
       unsigned char buffer[65536];
       printf("Verifying new firmware.\n");
       read_64kb_flash(fd,buffer);
       verify_against_buffer(ihex,buffer,1);
+      verify_time=gettime_ms()-lap_time; lap_time=gettime_ms();
+
     }
 
   // Reboot radio
   cmd[0]='0';
   write(fd,cmd,1);
   printf("Radio rebooted.\n");
-      
+
+  printf("Time breakdown: \n  Modem control = %lldms,  flash read = %lldms,\n  flash write = %lldms,  flash verify =  %lldms.\n  TOTAL = %lld ms.\n",
+	 modem_time,read_time,write_time,verify_time,
+	 modem_time+read_time+write_time+verify_time);
+	 
+  
   return 0;
 }
 
