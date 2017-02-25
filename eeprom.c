@@ -46,7 +46,7 @@ int eeprom_decode_data(char *msg,unsigned char *datablock)
 	    "Radio regulatory information text checksum is valid.\n"
 	    "The information text is as follows:\n  > ");
     for(i=1024;i<2048-64-16;i++) {
-      fprintf(stderr,"%c",datablock[i]);
+      if (datablock[i]) fprintf(stderr,"%c",datablock[i]);
       if ((datablock[i]=='\r')||(datablock[i]=='\n')) fprintf(stderr,"  > ");
     }
     fprintf(stderr,"\n");
@@ -65,7 +65,7 @@ int eeprom_decode_data(char *msg,unsigned char *datablock)
 	    "Extended user-supplied information text checksum is valid.\n"
 	    "The information text is as follows:\n  > ");
     for(i=0;i<1024-16;i++) {
-      fprintf(stderr,"%c",datablock[i]);
+      if (datablock[i]) fprintf(stderr,"%c",datablock[i]);
       if ((datablock[i]=='\r')||(datablock[i]=='\n')) fprintf(stderr,"  > ");
     }
     fprintf(stderr,"\n");
@@ -137,28 +137,30 @@ int eeprom_program(int argc,char **argv)
 
   // Start with blank memory block
   unsigned char datablock[2048];
-  memset(datablock,2048-64,' ');
-  memset(&datablock[2048-64],64,0);
+  memset(&datablock[0],0,2048-64);
+  memset(&datablock[2048-64],0,64);
 
   FILE *f;
 
-  if (argc==9) {
+  if (argc==10) {
     // Read data files and assemble 2KB data block to write
     if (strcmp(userdatafile,"-")) {
       f=fopen(userdatafile,"r");
       if (!f) {
-	perror("Could not open user data file.\n");
+	perror("Could not open user data file");
+      } else {
+	fread(&datablock[0],1024,1,f);
+	fclose(f);
       }
-      fread(&datablock[0],1024,1,f);
-      fclose(f);
     }
     if (strcmp(protecteddatafile,"-")) {
       f=fopen(protecteddatafile,"r");
       if (!f) {
-	perror("Could not open user data file.\n");
+	perror("Could not open user data file");
+      } else {
+	fread(&datablock[1024],1024-64,1,f);
+	fclose(f);
       }
-      fread(&datablock[1024],1024-64,1,f);
-      fclose(f);
     }
     datablock[2048-32+0]=(txpower>>8);
     datablock[2048-32+1]=(txpower&0xff);
@@ -168,6 +170,24 @@ int eeprom_program(int argc,char **argv)
     datablock[2048-32+13]=lock_firmware[0];
     datablock[2048-32+14]=primary_country[0];
     datablock[2048-32+15]=primary_country[1];
+
+    // Write hashes
+    int i;
+    sha3_Init256();
+    sha3_Update(&datablock[0],1024-16);
+    sha3_Finalize();
+    for(i=0;i<16;i++) datablock[1024-16+i]=ctx.s[i>>3][i&7];
+  
+    sha3_Init256();
+    sha3_Update(&datablock[2048-64],48);
+    sha3_Finalize();
+    for(i=0;i<16;i++) datablock[2048-16+i]=ctx.s[i>>3][i&7];
+  
+    sha3_Init256();
+    sha3_Update(&datablock[1024],1024-64-16);
+    sha3_Finalize();
+    for(i=0;i<16;i++) datablock[2048-64-16+i]=ctx.s[i>>3][i&7];
+
     
   }
   
@@ -205,25 +225,67 @@ int eeprom_program(int argc,char **argv)
 	}      
     }
   }
-    
-  if (argc==9) {
+
+  if (argc==10) {
     // Write it
+
+    unsigned char reply[8193];
+    int r;
 
     eeprom_decode_data("Datablock for writing",datablock);
     
     // Use <addr>!g!y<data>!w sequence to write each 16 bytes
     char cmd[1024];
     int address;
+    int problems=0;
+    fprintf(stderr,"Writing data to EEPROM"); fflush(stderr);
     for(address=0;address<0x800;address+=0x10) {
-      snprintf(cmd,1024,"!y%x!g",address);
-      write_radio(fd,(unsigned char *)cmd,strlen(cmd));
+
+      int address_not_yet_set=5;
+      while(address_not_yet_set)
+	{
+	  write_radio(fd,(unsigned char *)"!y",2);
+	  usleep(10000);
+	  snprintf(cmd,1024,"!C%x!g",address);
+	  write_radio(fd,(unsigned char *)cmd,strlen(cmd));
+	  usleep(20000);
+	  
+	  int a;
+	  r=read(fd,reply,8192); reply[8192]=0;
+	  if (sscanf((char *)reply,"EPRADDR=$%x",&a)!=1) {
+	    fprintf(stderr,"WARNING: Could not set EEPROM write address @ 0x%x\n",address);
+	    problems++;
+	  } else if (a!=address) {
+	    fprintf(stderr,"WARNING: EEPROM write address set wrong @ 0x%x (got set to 0x%x, command was '%s')\n",address,a,cmd);
+	  } else { address_not_yet_set=0; break; }
+	  address_not_yet_set--;
+	  if (!address_not_yet_set) {
+	    fprintf(stderr,"ERROR: Could not set EEPROM write address after 5 attempts.\n");
+	    exit(-1);
+	  }
+	}
+            
       // Now write data bytes, escaping ! as !.
       for(int j=0;j<0x10;j++) {
 	if (datablock[address+j]=='!') write_radio(fd,(unsigned char *)"!.",2);
 	else write_radio(fd,&datablock[address+j],1);
       }
-      write_radio(fd,(unsigned char *)"!W",2);
+      write_radio(fd,(unsigned char *)"!w",2);
+      usleep(100000);
+      // Check for "EEPROM WRITTEN" or "WRITE ERROR"
+      
+      // clear out any queued data first
+      debug++;
+      r=read(fd,reply,8192); reply[8192]=0;
+      if (r>0) dump_bytes("!w response",reply,r);
+      debug--;
+      
+      fprintf(stderr,"."); fflush(stderr);
     }
+    fprintf(stderr,"\n");
+    if (problems)
+      fprintf(stderr,
+	      "WARNING: A total of %d problems occurred during writing.\n",problems);
   }
   
   // Verify it
