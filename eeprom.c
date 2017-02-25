@@ -80,6 +80,13 @@ int eeprom_parse_line(char *line,unsigned char *datablock)
 {
   int address;
   int b[16];
+  int err;
+  if (sscanf(line,"EPR:%x : READ ERROR #%d",&address,&err)==2)
+    {
+      fprintf(stderr,"EEPROM read error #%d @ 0x%x\n",err,address);
+      for(int i=0;i<16;i++) datablock[address+i]=0xee;
+    }
+
   if (sscanf(line,"EPR:%x : %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x",
 	     &address,
 	     &b[0],&b[1],&b[2],&b[3],
@@ -248,7 +255,7 @@ int eeprom_program(int argc,char **argv)
 	  usleep(10000);
 	  snprintf(cmd,1024,"!C%x!g",address);
 	  write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-	  usleep(20000);
+	  usleep(12000);
 	  
 	  int a;
 	  r=read(fd,reply,8192); reply[8192]=0;
@@ -279,6 +286,7 @@ int eeprom_program(int argc,char **argv)
       r=read(fd,reply,8192); reply[8192]=0;
       if (r>0) dump_bytes("!w response",reply,r);
       debug--;
+      
       
       fprintf(stderr,"."); fflush(stderr);
     }
