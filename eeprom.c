@@ -54,6 +54,24 @@ int eeprom_decode_data(char *msg,unsigned char *datablock)
 		 "ERROR: Radio regulatory information text checksum is wrong:\n"	       
 		 "       LBARD will report only ISO code from radio parameter block.\n");
 
+  // Parse user extended information area
+  sha3_Init256();
+  sha3_Update(&datablock[0],1024-16);
+  sha3_Finalize();
+  for(i=0;i<16;i++)
+    if (datablock[1024-16+i]!=ctx.s[i>>3][i&7]) break;
+  if (i==16) {
+    fprintf(stderr,
+	    "Extended user-supplied information text checksum is valid.\n"
+	    "The information text is as follows:\n  > ");
+    for(i=0;i<1024-16;i++) {
+      fprintf(stderr,"%c",datablock[i]);
+      if ((datablock[i]=='\r')||(datablock[i]=='\n')) fprintf(stderr,"  > ");
+    }
+    fprintf(stderr,"\n");
+  } else
+    fprintf(stderr,
+	    "ERROR: Extended user-supplied information text checksum is wrong:\n");
   
   return 0;
 }
