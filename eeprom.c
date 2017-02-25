@@ -254,22 +254,21 @@ int eeprom_program(int argc,char **argv)
 	{
 	  write_radio(fd,(unsigned char *)"!y",2);
 	  usleep(10000);
-	  snprintf(cmd,1024,"!C%x!g",address);
+      	  snprintf(cmd,1024,"!C%x!g",address);
 	  write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-	  usleep(12000);
+	  usleep(15000);
 	  
 	  int a;
 	  r=read(fd,reply,8192); reply[8192]=0;
 	  if (sscanf((char *)reply,"EPRADDR=$%x",&a)!=1) {
-	    fprintf(stderr,"WARNING: Could not set EEPROM write address @ 0x%x\n",address);
-	    problems++;
+	    // fprintf(stderr,"WARNING: Could not set EEPROM write address @ 0x%x\n",address);
 	  } else if (a!=address) {
-	    fprintf(stderr,"WARNING: EEPROM write address set wrong @ 0x%x (got set to 0x%x, command was '%s')\n",address,a,cmd);
+	    // fprintf(stderr,"WARNING: EEPROM write address set wrong @ 0x%x (got set to 0x%x, command was '%s')\n",address,a,cmd);
 	  } else { address_not_yet_set=0; break; }
 	  address_not_yet_set--;
 	  if (!address_not_yet_set) {
 	    fprintf(stderr,"ERROR: Could not set EEPROM write address after 5 attempts.\n");
-	    exit(-1);
+	    problems++;
 	  }
 	}
             
@@ -283,11 +282,15 @@ int eeprom_program(int argc,char **argv)
       // Check for "EEPROM WRITTEN" or "WRITE ERROR"
       
       // clear out any queued data first
-      debug++;
       r=read(fd,reply,8192); reply[8192]=0;
-      if (r>0) dump_bytes("!w response",reply,r);
-      debug--;
-      
+      if (strstr((char *)reply,"WRITE ERROR")) {
+	fprintf(stderr,"\nERROR: Write error writing to EEPROM @ 0x%x\n",address);
+	problems++;
+      }
+      if (!strstr((char *)reply,"EEPROM WRITTEN")) {
+	fprintf(stderr,"\nERROR: No write confirmation received from EEPROM @ 0x%x\n",address);
+	problems++;
+      }
       
       fprintf(stderr,"."); fflush(stderr);
     }
