@@ -174,6 +174,7 @@ int eeprom_program(int argc,char **argv)
     datablock[2048-32+2]=(airspeed>>8);
     datablock[2048-32+3]=(airspeed&0xff);
     datablock[2048-32+4]=(frequency>>8);
+    datablock[2048-32+5]=(frequency&0xff);
     datablock[2048-32+13]=lock_firmware[0];
     datablock[2048-32+14]=primary_country[0];
     datablock[2048-32+15]=primary_country[1];
