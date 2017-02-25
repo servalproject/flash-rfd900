@@ -234,6 +234,24 @@ int eeprom_program(int argc,char **argv)
     }
   }
 
+  unsigned char readblock[2048];
+
+  char cmd[1024];
+  int address;
+  fprintf(stderr,"Reading data from EEPROM"); fflush(stderr);
+  for(address=0;address<0x800;address+=0x80) {
+    snprintf(cmd,1024,"%x!g",address);
+    write_radio(fd,(unsigned char *)cmd,strlen(cmd));
+    usleep(20000);
+    snprintf(cmd,1024,"!E");
+    write_radio(fd,(unsigned char *)cmd,strlen(cmd));
+    usleep(300000);
+    eeprom_parse_output(fd,readblock);
+    fprintf(stderr,"."); fflush(stderr);
+  }
+  fprintf(stderr,"\n"); fflush(stderr);
+
+  
   if (argc==10) {
     // Write it
 
@@ -243,12 +261,17 @@ int eeprom_program(int argc,char **argv)
     eeprom_decode_data("Datablock for writing",datablock);
     
     // Use <addr>!g!y<data>!w sequence to write each 16 bytes
-    char cmd[1024];
-    int address;
     int problems=0;
     fprintf(stderr,"Writing data to EEPROM"); fflush(stderr);
     for(address=0;address<0x800;address+=0x10) {
 
+      // Only write if it has changed
+      int changed=0;
+      for(int j=0;j<16;j++)
+	if (datablock[address+j]!=readblock[address+j])
+	  { changed=1; break; }
+      if (!changed) continue;
+      
       int address_not_yet_set=5;
       while(address_not_yet_set)
 	{
@@ -304,8 +327,6 @@ int eeprom_program(int argc,char **argv)
   // Use <addr>!g, !E commands to read out EEPROM data
   unsigned char verifyblock[2048];
 
-  char cmd[1024];
-  int address;
   fprintf(stderr,"Reading data from EEPROM"); fflush(stderr);
   for(address=0;address<0x800;address+=0x80) {
     snprintf(cmd,1024,"%x!g",address);
