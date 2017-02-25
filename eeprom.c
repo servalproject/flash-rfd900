@@ -5,10 +5,56 @@
 #include <string.h>
 #include <unistd.h>
 #include "flash900.h"
+#include "sha3.h"
 
 int eeprom_decode_data(char *msg,unsigned char *datablock)
 {
-  debug++; dump_bytes(msg,datablock,2048); debug--;
+  debug++; dump_bytes("Complete EEPROM data",datablock,2048); debug--;
+
+  // Parse radio parameter block
+  sha3_Init256();
+  sha3_Update(&datablock[2048-64],48);
+  sha3_Finalize();
+  int i;
+  for(i=0;i<16;i++)
+    if (datablock[2048-16+i]!=ctx.s[i>>3][i&7]) break;
+  if (i==16) {
+    fprintf(stderr,"Radio parameter block checksum valid.\n");
+    fprintf(stderr,"       TX power = %d dBm\n",
+	    (datablock[2048-32+0]<<8)+(datablock[2048-32+1]<<0));
+    fprintf(stderr,"      Air speed = %d Kbit/sec\n",
+	    (datablock[2048-32+2]<<8)+(datablock[2048-32+3]<<0));
+    fprintf(stderr,"      Frequency = %d MHz\n",
+	    (datablock[2048-32+4]<<8)+(datablock[2048-32+5]<<0));
+    fprintf(stderr,"  Firmware lock = %c\n",
+	    datablock[2048-32+13]);
+    fprintf(stderr,"       ISO code = %c%c\n",
+	    datablock[2048-32+14],datablock[2048-32+15]);
+  }
+  else fprintf(stderr,
+	       "ERROR: Radio parameter block checksum is wrong:\n"	       
+	       "       Radio will ignore EEPROM data!\n");
+
+  // Parse extended regulatory information (country list etc)
+  sha3_Init256();
+  sha3_Update(&datablock[1024],1024-64-16);
+  sha3_Finalize();
+  for(i=0;i<16;i++)
+    if (datablock[2048-64-16+i]!=ctx.s[i>>3][i&7]) break;
+  if (i==16) {
+    fprintf(stderr,
+	    "Radio regulatory information text checksum is valid.\n"
+	    "The information text is as follows:\n  > ");
+    for(i=1024;i<2048-64-16;i++) {
+      fprintf(stderr,"%c",datablock[i]);
+      if ((datablock[i]=='\r')||(datablock[i]=='\n')) fprintf(stderr,"  > ");
+    }
+    fprintf(stderr,"\n");
+  } else fprintf(stderr,
+		 "ERROR: Radio regulatory information text checksum is wrong:\n"	       
+		 "       LBARD will report only ISO code from radio parameter block.\n");
+
+  
   return 0;
 }
 
