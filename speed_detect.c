@@ -25,6 +25,12 @@ int dump_bytes(char *msg,unsigned char *bytes,int length)
   int i,j;
   fprintf(stderr,"%s:\n",msg);
   for(i=0;i<length;i+=16) {
+    int show=0;
+    for(j=0;j<16;j++)
+      if ((i+j<length)&&(bytes[i+j])) { show=1; break; }
+    if (!show) continue;
+
+    
     fprintf(stderr,"%04X: ",i);
     for(j=0;j<16;j++)
       if (i+j<length) fprintf(stderr," %02X",bytes[i+j]);
