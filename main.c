@@ -276,11 +276,11 @@ int read_64kb_flash(int fd,unsigned char buffer[65536])
 
   // Read 0xfc bytes, so that we have exactly 256 reads to schedule.
   // This makes it easier for us to pipeline things.
-  for(a=0;a<0xfc00;a+=(0xfc*4)) {
+  for(a=0;a<0xf800;a+=(0xfc*4)) {
     // work out transaction length
     l=0xfc;
 
-    printf("\r$%04x - $%04x",a,a+l*4-1); fflush(stdout);
+    printf("\rReading $%04x - $%04x",a,a+l*4-1); fflush(stdout);
 
     request_flash_read(fd,&buffer[a],l);
     // sleep for 270 character transfers to allow read command to be fully
@@ -299,7 +299,6 @@ int read_64kb_flash(int fd,unsigned char buffer[65536])
     flash_read_requested_bytes(fd,&buffer[a+2*0xfc],l);
     flash_read_requested_bytes(fd,&buffer[a+3*0xfc],l);
   }
-
 
   printf("\n");
   return 0;
