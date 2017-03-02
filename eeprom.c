@@ -242,12 +242,15 @@ int eeprom_program(int argc,char **argv)
   int address;
   fprintf(stderr,"Reading data from EEPROM"); fflush(stderr);
   for(address=0;address<0x800;address+=0x80) {
+    snprintf(cmd,1024,"!C");
+    write_radio(fd,(unsigned char *)cmd,strlen(cmd));
+    usleep(1000);
     snprintf(cmd,1024,"%x!g",address);
     write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-    usleep(20000);
+    usleep(10000);
     snprintf(cmd,1024,"!E");
     write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-    usleep(300000);
+    usleep(200000);
     eeprom_parse_output(fd,readblock);
     fprintf(stderr,"."); fflush(stderr);
   }
@@ -356,15 +359,15 @@ int eeprom_write_page(int fd, int address,unsigned char *datablock)
     else write_radio(fd,&datablock[address+j],1);
     // write_radio(fd,(unsigned char *)&"ABCDEFGHIJKLMNOP"[j],1);
   }
-  usleep(10000);
+  usleep(1000);
   write_radio(fd,(unsigned char *)"!y",2);
-  usleep(10000);
+  usleep(1000);
   write_radio(fd,(unsigned char *)"!w",2);
-  usleep(100000);
+  usleep(71000);
   
-  snprintf(cmd,1024,"%x!g!E",address);
-  write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-  usleep(50000);
+  //  snprintf(cmd,1024,"%x!g!E",address);
+  //  write_radio(fd,(unsigned char *)cmd,strlen(cmd));
+  //  usleep(50000);
   // Check for "EEPROM WRITTEN $%x -> $%x" or "WRITE ERROR" messages
   
   // clear out any queued data first
@@ -396,7 +399,8 @@ int eeprom_write_page(int fd, int address,unsigned char *datablock)
   if (!strstr((char *)reply,expected)) {
     fprintf(stderr,"\nERROR: No write confirmation received from EEPROM @ 0x%x\n",address);
     debug++; dump_bytes("This is what I saw",reply,r); debug--;
-    debug++; dump_bytes("I expected to see",expected,strlen(expected)); debug--;
+    debug++; dump_bytes("I expected to see",
+			(unsigned char *)expected,strlen(expected)); debug--;
     
     problems++;
   }
