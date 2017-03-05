@@ -182,6 +182,26 @@ int eeprom_parse_output(int fd,unsigned char *datablock)
       if ((buffer[i]=='E')&&(buffer[i+1]=='P')) {
 	line[0]='E'; line_len=1;
       }
+      if ((buffer[i]==5)&&(buffer[i+1]==16)) {
+	// Parse binary format right out
+	int address=(unsigned char)buffer[i+2]+((unsigned char)buffer[i+3]<<8);
+	if (address>=0&&address<0x800) {
+	  for(int j=0;j<16;j++) datablock[address+j]=(unsigned char)buffer[i+4+j];
+	  if (0) {
+	    fprintf(stderr,
+		    "Parsed binary line for addr 0x%03X (from %02X %02X %02X %02x) @ 0x%x\n    ",
+		    address,
+		    (unsigned char)buffer[i+0],
+		    (unsigned char)buffer[i+1],
+		    (unsigned char)buffer[i+2],
+		    (unsigned char)buffer[i+3],i
+		    );
+	    for(int j=0;j<16;j++) fprintf(stderr," %02X",datablock[address+j]);
+	    fprintf(stderr,"\n");
+	  }
+	  i+=2+2+16-1;
+	}
+      }
     }
   }
   if (line_len) eeprom_parse_line(line,datablock);
@@ -355,10 +375,10 @@ int eeprom_program(int argc,char **argv)
       usleep(1000);
       snprintf(cmd,1024,"%x!g",address);
       write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-      usleep(10000);
-      snprintf(cmd,1024,"!E");
+      usleep(5000);
+      snprintf(cmd,1024,"!I");
       write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-      usleep(200000);
+      usleep(105000);
       eeprom_parse_output(fd,readblock);
       fprintf(stderr,"."); fflush(stderr);
     }
@@ -410,15 +430,16 @@ int eeprom_program(int argc,char **argv)
   for(address=0;address<0x800;address+=0x80) {
     snprintf(cmd,1024,"%x!g",address);
     write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-    usleep(10000);
-    snprintf(cmd,1024,"!E");
+    usleep(5000);
+    snprintf(cmd,1024,"!I");
     write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-    usleep(200000);
+    usleep(105000);
     eeprom_parse_output(fd,verifyblock);
     fprintf(stderr,"."); fflush(stderr);
   }
   fprintf(stderr,"\n"); fflush(stderr);
-  
+
+  //  ++debug; dump_bytes("EEPROM data",verifyblock,2048);
   eeprom_decode_data("Datablock read from EEPROM",verifyblock);
     
   return 0;      
