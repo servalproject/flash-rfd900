@@ -206,7 +206,7 @@ int eeprom_program(int argc,char **argv)
   char *primary_country=argv[9];
   char *lock_firmware=argv[10];
   char *country_list=argv[11];
-
+  
   // Start with blank memory block
   unsigned char datablock[2048];
   memset(&datablock[0],0,2048-64);
@@ -216,10 +216,26 @@ int eeprom_program(int argc,char **argv)
     // Compress user data and alternate regulatory information into EEPROM.
     // If no alternate regulatory information is provided, generate default
     // information based on the set of countries listed.
+
+    char configuration_directives_normalised[16384];
+    int cdn_len=0;
+    for(int i=0;configuration_directives_input[i];i++) {
+      if (configuration_directives_input[i]=='\\') {
+	i++;
+	switch(configuration_directives_input[i]) {
+	case 'n': configuration_directives_normalised[cdn_len++]='\n'; break;
+	case 'r': configuration_directives_normalised[cdn_len++]='\r'; break;
+	case 'b': configuration_directives_normalised[cdn_len++]='\b'; break;
+	case '\\': configuration_directives_normalised[cdn_len++]='\\'; break;
+	}
+      } else configuration_directives_normalised[cdn_len++]
+	       =configuration_directives_input[i];
+    }
+    
     unsigned long bytes_used=0x3F0;
     int result=mz_compress2(&datablock[0x000],&bytes_used,
-			    (unsigned char *)configuration_directives_input,
-			    strlen(configuration_directives_input)+1,9);
+			    (unsigned char *)configuration_directives_normalised,
+			    strlen(configuration_directives_normalised)+1,9);
     if (result!=MZ_OK) {
       fprintf(stderr,"Failed to compress configuration directives (MZ result=%d.\n",
 	      result);
