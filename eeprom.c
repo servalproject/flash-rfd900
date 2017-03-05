@@ -111,7 +111,7 @@ int eeprom_decode_data(char *msg,unsigned char *datablock)
   sha3_Init256();
   sha3_Update(&datablock[0x000],0x3F0);
   sha3_Finalize();
-  for(i=0;i<16;i++) if (datablock[0x3E0+i]!=ctx.s[i>>3][i&7]) break;
+  for(i=0;i<16;i++) if (datablock[0x3F0+i]!=ctx.s[i>>3][i&7]) break;
   if (i==16) {
     fprintf(stderr,
 	    "Mesh-Extender configuration directive text checksum is valid.\n"
@@ -268,20 +268,24 @@ int eeprom_program(int argc,char **argv)
 
     // Write hashes
     int i;
+
+    // Mesh Extender configuration directive block
     sha3_Init256();
-    sha3_Update(&datablock[0],1024-16);
+    sha3_Update(&datablock[0],0x3F0);
     sha3_Finalize();
-    for(i=0;i<16;i++) datablock[1024-16+i]=ctx.s[i>>3][i&7];
-  
+    for(i=0;i<16;i++) datablock[0x3F0+i]=ctx.s[i>>3][i&7];
+
+    // Regulatory info block
     sha3_Init256();
-    sha3_Update(&datablock[2048-64],48);
+    sha3_Update(&datablock[0x400],0x7B0-0x400);
     sha3_Finalize();
-    for(i=0;i<16;i++) datablock[2048-16+i]=ctx.s[i>>3][i&7];
-  
+    for(i=0;i<16;i++) datablock[0x7B0+i]=ctx.s[i>>3][i&7];
+
+    // Radio parameter block
     sha3_Init256();
-    sha3_Update(&datablock[1024],1024-64-16);
+    sha3_Update(&datablock[0x7C0],0x7F0-0x7C0);
     sha3_Finalize();
-    for(i=0;i<16;i++) datablock[2048-64-16+i]=ctx.s[i>>3][i&7];
+    for(i=0;i<16;i++) datablock[0x7F0+i]=ctx.s[i>>3][i&7];
 
     
   }

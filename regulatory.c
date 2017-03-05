@@ -51,11 +51,10 @@ int generate_regulatory_information(char *out,int max_len,char *primary_country,
   
   append_string(out,&offset,max_len,
 		"<p class=warning>This Mesh Extender has been configured with the intention of"
-		" lawful"
 		" operation in the following locations.  Note that this does not"
 		" constitute a legal opinion, indeminification or anything similar,"
 		" and all operation and use of this Mesh Extender is the"
-		" responsibility of its owner.\n\n"
+		" responsibility of its operator.\n\n"
 		"<p class=locationlistheading>The list of locations follows, and in alphabetical order, and using the conventions of ISO3166:\n\n"
 		"<table class=locationlisttable>\n");
   
