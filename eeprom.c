@@ -205,13 +205,14 @@ int eeprom_program(int argc,char **argv)
   int airspeed=atoi(argv[8]?argv[7]:"0");
   char *primary_country=argv[9];
   char *lock_firmware=argv[10];
+  char *country_list=argv[11];
 
   // Start with blank memory block
   unsigned char datablock[2048];
   memset(&datablock[0],0,2048-64);
   memset(&datablock[2048-64],0,64);
 
-  if (argc==11) {
+  if (argc==12) {
     // Compress user data and alternate regulatory information into EEPROM.
     // If no alternate regulatory information is provided, generate default
     // information based on the set of countries listed.
@@ -224,8 +225,14 @@ int eeprom_program(int argc,char **argv)
 	      result);
       exit(-1);
     }
+
+    // Generate default regulatory information, if required
+    if (!regulatory_information[0])
+      generate_regulatory_information(regulatory_information,
+				      sizeof(regulatory_information),
+				      primary_country,country_list,
+				      frequency,txpower,dutycycle);
     
-    // Read data files and assemble 2KB data block to write
     bytes_used=0x7B0-0x400;
     result=mz_compress2(&datablock[0x400],&bytes_used,
 			(unsigned char *)regulatory_information,

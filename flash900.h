@@ -23,6 +23,11 @@ int set_nonblock(int fd);
 int write_radio(int fd,unsigned char *bytes,int count);
 int get_radio_reply(int fd,char *buffer,int buffer_size,int delay_in_seconds);
 int dump_bytes(char *m, unsigned char *b,int count);
+int generate_regulatory_information(char *out,int max_len,char *primary_country,
+				    char *all_countries,
+				    int frequency, int max_txpower,
+				    int duty_cycle);
+
 
 // RFD900 boot-loader commands
 #define NOP		0x00
