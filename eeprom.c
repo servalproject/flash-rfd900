@@ -191,18 +191,18 @@ int eeprom_parse_output(int fd,unsigned char *datablock)
 
 int eeprom_program(int argc,char **argv)
 {
-  if ((argc!=10)&&(argc!=3)) {
+  if ((argc!=12)&&(argc!=3)) {
     fprintf(stderr,"usage: flash900 eeprom <serial port> [<Mesh Extender configuration directives> <alternate regulatory information> <frequency> <txpower> <dutycycle> <airspeed> <primary country 2-letter code> <firmware lock (Y|N)> <full list of ISO 2-letter country codes>]\n");
     fprintf(stderr," e.g.: flash900 eeprom /dev/cu.usbserial-AARDVARK \"OTABID=918f8a6684c861f68c1f6c468c4c684\\nMESHEXTENDERNAME=Adelaide1\\nLATITUDE=-35\\nLONGITUDE=+138\\n\" \"\" 923000000 24 100 128 AU N AU,NZ,US,CA,VU\n");
     exit(-1);
   }
   
-  char *configuration_directives=argv[3];
-  char *regulatory_information=argv[4];
+  char *configuration_directives_input=argv[3];
+  char *regulatory_information_input=argv[4];
   int frequency=atoi(argv[5]);
   int txpower=atoi(argv[6]?argv[6]:"0");  
-  int dutycycle=atoi(argv[7]?argv[6]:"0");  
-  int airspeed=atoi(argv[8]?argv[7]:"0");
+  int dutycycle=atoi(argv[7]?argv[7]:"0");  
+  int airspeed=atoi(argv[8]?argv[8]:"0");
   char *primary_country=argv[9];
   char *lock_firmware=argv[10];
   char *country_list=argv[11];
@@ -218,8 +218,8 @@ int eeprom_program(int argc,char **argv)
     // information based on the set of countries listed.
     unsigned long bytes_used=0x3F0;
     int result=mz_compress2(&datablock[0x000],&bytes_used,
-			    (unsigned char *)configuration_directives,
-			    strlen(configuration_directives)+1,9);
+			    (unsigned char *)configuration_directives_input,
+			    strlen(configuration_directives_input)+1,9);
     if (result!=MZ_OK) {
       fprintf(stderr,"Failed to compress configuration directives (MZ result=%d.\n",
 	      result);
@@ -227,11 +227,14 @@ int eeprom_program(int argc,char **argv)
     }
 
     // Generate default regulatory information, if required
-    if (!regulatory_information[0])
+    if (!regulatory_information_input[0]) {
       generate_regulatory_information(regulatory_information,
-				      sizeof(regulatory_information),
+				      16384,
 				      primary_country,country_list,
 				      frequency,txpower,dutycycle);
+    } else {
+      strncpy(regulatory_information,regulatory_information_input,16384);
+    }
     
     bytes_used=0x7B0-0x400;
     result=mz_compress2(&datablock[0x400],&bytes_used,
@@ -334,7 +337,7 @@ int eeprom_program(int argc,char **argv)
   fprintf(stderr,"\n"); fflush(stderr);
 
   
-  if (argc==10) {
+  if (argc==12) {
     // Write it
 
     eeprom_decode_data("Datablock for writing",datablock);
