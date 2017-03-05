@@ -345,26 +345,27 @@ int eeprom_program(int argc,char **argv)
 
   char cmd[1024];
   int address;
-  fprintf(stderr,"Reading data from EEPROM"); fflush(stderr);
-  for(address=0;address<0x800;address+=0x80) {
-    snprintf(cmd,1024,"!C");
-    write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-    usleep(1000);
-    snprintf(cmd,1024,"%x!g",address);
-    write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-    usleep(10000);
-    snprintf(cmd,1024,"!E");
-    write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-    usleep(200000);
-    eeprom_parse_output(fd,readblock);
-    fprintf(stderr,"."); fflush(stderr);
-  }
-  fprintf(stderr,"\n"); fflush(stderr);
 
-  
   if (argc==12) {
+    
+    fprintf(stderr,"Reading data from EEPROM"); fflush(stderr);
+    for(address=0;address<0x800;address+=0x80) {
+      snprintf(cmd,1024,"!C");
+      write_radio(fd,(unsigned char *)cmd,strlen(cmd));
+      usleep(1000);
+      snprintf(cmd,1024,"%x!g",address);
+      write_radio(fd,(unsigned char *)cmd,strlen(cmd));
+      usleep(10000);
+      snprintf(cmd,1024,"!E");
+      write_radio(fd,(unsigned char *)cmd,strlen(cmd));
+      usleep(200000);
+      eeprom_parse_output(fd,readblock);
+      fprintf(stderr,"."); fflush(stderr);
+    }
+    fprintf(stderr,"\n"); fflush(stderr);
+    
     // Write it
-
+    
     eeprom_decode_data("Datablock for writing",datablock);
     
     // Use <addr>!g!y<data>!w sequence to write each 16 bytes
@@ -404,23 +405,22 @@ int eeprom_program(int argc,char **argv)
   // Verify it
   // Use <addr>!g, !E commands to read out EEPROM data
   unsigned char verifyblock[2048];
-
+  
   fprintf(stderr,"Reading data from EEPROM"); fflush(stderr);
   for(address=0;address<0x800;address+=0x80) {
     snprintf(cmd,1024,"%x!g",address);
     write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-    usleep(20000);
+    usleep(10000);
     snprintf(cmd,1024,"!E");
     write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-    usleep(300000);
+    usleep(200000);
     eeprom_parse_output(fd,verifyblock);
     fprintf(stderr,"."); fflush(stderr);
   }
   fprintf(stderr,"\n"); fflush(stderr);
-    
+  
   eeprom_decode_data("Datablock read from EEPROM",verifyblock);
-  
-  
+    
   return 0;      
 }
 
