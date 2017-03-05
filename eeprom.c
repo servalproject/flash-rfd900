@@ -192,54 +192,64 @@ int eeprom_parse_output(int fd,unsigned char *datablock)
 int eeprom_program(int argc,char **argv)
 {
   if ((argc!=10)&&(argc!=3)) {
-    fprintf(stderr,"usage: flash900 eeprom <serial port> [<user data file|-> <protected data file|-> <frequency> <txpower> <airspeed> <primary country 2-letter code> <firmware lock (Y|N)]\n");
+    fprintf(stderr,"usage: flash900 eeprom <serial port> [<Mesh Extender configuration directives> <alternate regulatory information> <frequency> <txpower> <dutycycle> <airspeed> <primary country 2-letter code> <firmware lock (Y|N)> <full list of ISO 2-letter country codes>]\n");
+    fprintf(stderr," e.g.: flash900 eeprom /dev/cu.usbserial-AARDVARK \"OTABID=918f8a6684c861f68c1f6c468c4c684\\nMESHEXTENDERNAME=Adelaide1\\nLATITUDE=-35\\nLONGITUDE=+138\\n\" \"\" 923000000 24 100 128 AU N AU,NZ,US,CA,VU\n");
     exit(-1);
   }
   
-  char *userdatafile=argv[3];
-  char *protecteddatafile=argv[4];
+  char *configuration_directives=argv[3];
+  char *regulatory_information=argv[4];
   int frequency=atoi(argv[5]);
-  int txpower=atoi(argv[6]?argv[6]:"0");
-  int airspeed=atoi(argv[7]?argv[7]:"0");
-  char *primary_country=argv[8];
-  char *lock_firmware=argv[9];
+  int txpower=atoi(argv[6]?argv[6]:"0");  
+  int dutycycle=atoi(argv[7]?argv[6]:"0");  
+  int airspeed=atoi(argv[8]?argv[7]:"0");
+  char *primary_country=argv[9];
+  char *lock_firmware=argv[10];
 
   // Start with blank memory block
   unsigned char datablock[2048];
   memset(&datablock[0],0,2048-64);
   memset(&datablock[2048-64],0,64);
 
-  FILE *f;
-
-  if (argc==10) {
+  if (argc==11) {
+    // Compress user data and alternate regulatory information into EEPROM.
+    // If no alternate regulatory information is provided, generate default
+    // information based on the set of countries listed.
+    unsigned long bytes_used=0x3F0;
+    int result=mz_compress2(&datablock[0x000],&bytes_used,
+			    (unsigned char *)configuration_directives,
+			    strlen(configuration_directives)+1,9);
+    if (result!=MZ_OK) {
+      fprintf(stderr,"Failed to compress configuration directives (MZ result=%d.\n",
+	      result);
+      exit(-1);
+    }
+    
     // Read data files and assemble 2KB data block to write
-    if (strcmp(userdatafile,"-")) {
-      f=fopen(userdatafile,"r");
-      if (!f) {
-	perror("Could not open user data file");
-      } else {
-	fread(&datablock[0],1024,1,f);
-	fclose(f);
-      }
+    bytes_used=0x7B0-0x400;
+    result=mz_compress2(&datablock[0x400],&bytes_used,
+			(unsigned char *)regulatory_information,
+			strlen(regulatory_information)+1,9);
+    if (result!=MZ_OK) {
+      fprintf(stderr,"Failed to compress regulatory information (MZ result=%d.\n",
+	      result);
+      exit(-1);
     }
-    if (strcmp(protecteddatafile,"-")) {
-      f=fopen(protecteddatafile,"r");
-      if (!f) {
-	perror("Could not open user data file");
-      } else {
-	fread(&datablock[1024],1024-64,1,f);
-	fclose(f);
-      }
-    }
-    datablock[2048-32+0]=(txpower>>8);
-    datablock[2048-32+1]=(txpower&0xff);
-    datablock[2048-32+2]=(airspeed>>8);
-    datablock[2048-32+3]=(airspeed&0xff);
-    datablock[2048-32+4]=(frequency>>8);
-    datablock[2048-32+5]=(frequency&0xff);
-    datablock[2048-32+13]=lock_firmware[0];
-    datablock[2048-32+14]=primary_country[0];
-    datablock[2048-32+15]=primary_country[1];
+
+    // Set format version
+    datablock[0x7EF]=0x01;
+    // Set other radio fields for use by RFD900 radio (and also for LBARD display)
+    datablock[0x7ED]=primary_country[0];
+    datablock[0x7EE]=primary_country[1];
+    datablock[0x7E8]=lock_firmware[0];
+    datablock[0x7E6]=airspeed&0xff;
+    datablock[0x7E7]=airspeed>>8;
+    datablock[0x7E2]=(frequency>>0)&0xff;
+    datablock[0x7E3]=(frequency>>8)&0xff;
+    datablock[0x7E4]=(frequency>>16)&0xff;
+    datablock[0x7E5]=(frequency>>24)&0xff;
+    datablock[0x7E1]=txpower;
+    datablock[0x7E0]=dutycycle;
 
     // Write hashes
     int i;
