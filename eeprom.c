@@ -232,8 +232,11 @@ int eeprom_program(int argc,char **argv)
 				      16384,
 				      primary_country,country_list,
 				      frequency,txpower,dutycycle);
+      fprintf(stderr,"Auto-generating regulatory boilerplate information text"
+	      " (%d bytes long).\n",(int)strlen(regulatory_information));
     } else {
       strncpy(regulatory_information,regulatory_information_input,16384);
+      fprintf(stderr,"Using user-supplied regulatory information text.\n");
     }
     
     bytes_used=0x7B0-0x400;
@@ -244,7 +247,9 @@ int eeprom_program(int argc,char **argv)
       fprintf(stderr,"Failed to compress regulatory information (MZ result=%d.\n",
 	      result);
       exit(-1);
-    }
+    } else
+      fprintf(stderr,"Regulatory information text required %d bytes (0x%03x-0x%03x)\n",
+	      (int)bytes_used,0x400,0x400+(int)bytes_used);
 
     // Set format version
     datablock[0x7EF]=0x01;
