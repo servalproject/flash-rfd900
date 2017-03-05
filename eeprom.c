@@ -7,31 +7,71 @@
 #include "flash900.h"
 #include "sha3.h"
 
+// Radio parameters we get from the EEPROM
+char regulatory_information[16384]="No regulatory information provided.";
+unsigned long regulatory_information_length=
+  strlen("No regulatory information provided.");
+char configuration_directives[16384]="nodirectives=true\n";
+unsigned long configuration_directives_length=strlen("nodirectives=true\n");
+
+// Use public domain libz-compatible library
+#define MINIZ_NO_ARCHIVE_APIS
+#define MINIZ_NO_ARCHIVE_WRITING_APIS
+//#define MINIZ_NO_ZLIB_APIS
+#include "miniz.c"
+
 int eeprom_write_page(int fd, int address,unsigned char *readblock);
 
 int eeprom_decode_data(char *msg,unsigned char *datablock)
 {
-  debug++; dump_bytes("Complete EEPROM data",datablock,2048); debug--;
 
   // Parse radio parameter block
+  // See http://developer.servalproject.org/dokuwiki/doku.php?id=content:meshextender:me2.0_eeprom_plan&#memory_layout
+
   sha3_Init256();
-  sha3_Update(&datablock[2048-64],48);
+  sha3_Update(&datablock[0x7C0],(0x7F0-0x7C0));
   sha3_Finalize();
   int i;
-  for(i=0;i<16;i++)
-    if (datablock[2048-16+i]!=ctx.s[i>>3][i&7]) break;
+  for(i=0;i<16;i++) if (datablock[0x7F0+i]!=ctx.s[i>>3][i&7]) break;
   if (i==16) {
     fprintf(stderr,"Radio parameter block checksum valid.\n");
-    fprintf(stderr,"       TX power = %d dBm\n",
-	    (datablock[2048-32+0]<<8)+(datablock[2048-32+1]<<0));
-    fprintf(stderr,"      Air speed = %d Kbit/sec\n",
-	    (datablock[2048-32+2]<<8)+(datablock[2048-32+3]<<0));
-    fprintf(stderr,"      Frequency = %d MHz\n",
-	    (datablock[2048-32+4]<<8)+(datablock[2048-32+5]<<0));
-    fprintf(stderr,"  Firmware lock = %c\n",
-	    datablock[2048-32+13]);
-    fprintf(stderr,"       ISO code = %c%c\n",
-	    datablock[2048-32+14],datablock[2048-32+15]);
+
+    uint8_t format_version=datablock[0x7EF];
+    char primary_iso_code[3]={datablock[0x7ED],datablock[0x7EE],0};
+    uint8_t regulatory_lock_required=datablock[0x7E8];
+    uint16_t radio_bitrate=(datablock[0x7E7]<<8)+(datablock[0x7E6]<<0);
+    uint32_t radio_centre_frequency=
+      (datablock[0x7E3]<<8)+(datablock[0x7E2]<<0)+
+      (datablock[0x7E5]<<24)+(datablock[0x7E4]<<16);
+    uint8_t radio_txpower_dbm=datablock[0x7E1];
+    uint8_t radio_max_dutycycle=datablock[0x7E0];
+
+    if (format_version!=0x01) {
+      fprintf(stderr,"Radio parameter block data format version is 0x%02x, which I don't understand.\n",format_version);
+    } else {    
+      fprintf(stderr,
+	      "                radio max TX power = %d dBm\n",
+	      (int)radio_txpower_dbm);
+      fprintf(stderr,
+	      "              radio max duty-cycle = %d %%\n",
+	      (int)radio_max_dutycycle);
+      fprintf(stderr,
+	      "                   radio air speed = %d Kbit/sec\n",
+	      (int)radio_bitrate);
+      fprintf(stderr,
+	      "            radio centre frequency = %d Hz\n",
+	      (int)radio_centre_frequency);
+      fprintf(stderr,
+	      "regulations require firmware lock? = '%c'\n",
+	      regulatory_lock_required);
+      fprintf(stderr,
+	      "          primary ISO country code = \"%s\"\n",
+	      primary_iso_code);
+
+      // XXX - Store all parameters for reference.  In particular,
+      // we care about radio_max_dutycycle and regulatory_lock_required, so that
+      // we can obey them.
+    }
   }
   else fprintf(stderr,
 	       "ERROR: Radio parameter block checksum is wrong:\n"	       
@@ -39,41 +79,61 @@ int eeprom_decode_data(char *msg,unsigned char *datablock)
 
   // Parse extended regulatory information (country list etc)
   sha3_Init256();
-  sha3_Update(&datablock[1024],1024-64-16);
+  sha3_Update(&datablock[0x0400],0x7B0-0x400);
   sha3_Finalize();
-  for(i=0;i<16;i++)
-    if (datablock[2048-64-16+i]!=ctx.s[i>>3][i&7]) break;
+  for(i=0;i<16;i++) if (datablock[0x7B0+i]!=ctx.s[i>>3][i&7]) break;
   if (i==16) {
     fprintf(stderr,
-	    "Radio regulatory information text checksum is valid.\n"
-	    "The information text is as follows:\n  > ");
-    for(i=1024;i<2048-64-16;i++) {
-      if (datablock[i]) fprintf(stderr,"%c",datablock[i]);
-      if ((datablock[i]=='\r')||(datablock[i]=='\n')) fprintf(stderr,"  > ");
+	    "Radio regulatory information text checksum is valid.\n");
+    regulatory_information_length=sizeof(regulatory_information);
+    int result=mz_uncompress((unsigned char *)regulatory_information,
+			     &regulatory_information_length,
+			     &datablock[0x400], 0x7B0-0x400);
+    if (result!=MZ_OK)
+      fprintf(stderr,"Failed to decompress regulatory information block.\n");
+    else {
+      // XXX - This should be recorded somewhere, so that we can present it using
+      // our web server.
+      fprintf(stderr,
+	      "The information text is as follows:\n  > ");
+      for(i=0;regulatory_information[i];i++) {
+	if (regulatory_information[i]) fprintf(stderr,"%c",regulatory_information[i]);
+	if ((regulatory_information[i]=='\r')||(regulatory_information[i]=='\n'))
+	  fprintf(stderr,"  > ");
+      }
+      fprintf(stderr,"\n");
     }
-    fprintf(stderr,"\n");
   } else fprintf(stderr,
 		 "ERROR: Radio regulatory information text checksum is wrong:\n"	       
 		 "       LBARD will report only ISO code from radio parameter block.\n");
 
   // Parse user extended information area
   sha3_Init256();
-  sha3_Update(&datablock[0],1024-16);
+  sha3_Update(&datablock[0x000],0x3F0);
   sha3_Finalize();
-  for(i=0;i<16;i++)
-    if (datablock[1024-16+i]!=ctx.s[i>>3][i&7]) break;
+  for(i=0;i<16;i++) if (datablock[0x3E0+i]!=ctx.s[i>>3][i&7]) break;
   if (i==16) {
     fprintf(stderr,
-	    "Extended user-supplied information text checksum is valid.\n"
+	    "Mesh-Extender configuration directive text checksum is valid.\n"
 	    "The information text is as follows:\n  > ");
-    for(i=0;i<1024-16;i++) {
-      if (datablock[i]) fprintf(stderr,"%c",datablock[i]);
-      if ((datablock[i]=='\r')||(datablock[i]=='\n')) fprintf(stderr,"  > ");
+    configuration_directives_length=sizeof(configuration_directives);
+    int result=mz_uncompress((unsigned char *)configuration_directives,
+			     &configuration_directives_length,
+			     &datablock[0x0], 0x3F0);
+    if (result!=MZ_OK)
+      fprintf(stderr,"Failed to decompress configuration directive block.\n");
+    else {
+    for(i=0;configuration_directives[i];i++) {
+      if (configuration_directives[i])
+	fprintf(stderr,"%c",configuration_directives[i]);
+      if ((configuration_directives[i]=='\r')||(configuration_directives[i]=='\n'))
+	fprintf(stderr,"  > ");
     }
     fprintf(stderr,"\n");
+    }
   } else
     fprintf(stderr,
-	    "ERROR: Extended user-supplied information text checksum is wrong:\n");
+	    "ERROR: Mesh-Extender configuration directive block checksum is wrong:\n");
   
   return 0;
 }
