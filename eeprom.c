@@ -7,7 +7,17 @@
 #include "flash900.h"
 #include "sha3.h"
 
+struct radio_parameters {
+  char primary_country[2];
+  char lock_firmware;
+  uint16_t airspeed;
+  uint32_t frequency;
+  unsigned char txpower;
+  unsigned char dutycycle;
+};
+
 // Radio parameters we get from the EEPROM
+struct radio_parameters eeprom_radio_parameters;
 char regulatory_information[16384]="No regulatory information provided.";
 unsigned long regulatory_information_length=
   strlen("No regulatory information provided.");
@@ -20,23 +30,23 @@ unsigned long configuration_directives_length=strlen("nodirectives=true\n");
 //#define MINIZ_NO_ZLIB_APIS
 #include "miniz.c"
 
-struct radio_parameters {
-  char primary_country[2];
-  char lock_firmware;
-  uint16_t airspeed;
-  uint32_t frequency;
-  unsigned char txpower;
-  unsigned char dutycycle;
-};
-
 int eeprom_write_page(int fd, int address,unsigned char *readblock);
 
-int eeprom_decode_data(char *msg,unsigned char *datablock)
+int eeprom_decode_data(unsigned char *datablock)
 {
 
   // Parse radio parameter block
   // See http://developer.servalproject.org/dokuwiki/doku.php?id=content:meshextender:me2.0_eeprom_plan&#memory_layout
 
+  int problems=0;
+  
+  // Clear out read data before proceeding
+  bzero(&eeprom_radio_parameters,sizeof(eeprom_radio_parameters));
+  regulatory_information_length=0;
+  regulatory_information[0]=0;
+  configuration_directives_length=0;
+  configuration_directives[0]=0;
+  
   sha3_Init256();
   sha3_Update(&datablock[0x7C0],(0x7F0-0x7C0));
   sha3_Finalize();
@@ -46,46 +56,29 @@ int eeprom_decode_data(char *msg,unsigned char *datablock)
     fprintf(stderr,"Radio parameter block checksum valid.\n");
 
     uint8_t format_version=datablock[0x7EF];
-    char primary_iso_code[3]={datablock[0x7ED],datablock[0x7EE],0};
-    uint8_t regulatory_lock_required=datablock[0x7E8];
-    uint16_t radio_bitrate=(datablock[0x7E7]<<8)+(datablock[0x7E6]<<0);
-    uint32_t radio_centre_frequency=
+    eeprom_radio_parameters.primary_country[0]=datablock[0x7ED];
+    eeprom_radio_parameters.primary_country[1]=datablock[0x7EE];
+    eeprom_radio_parameters.lock_firmware=datablock[0x7E8];
+    eeprom_radio_parameters.airspeed=(datablock[0x7E7]<<8)+(datablock[0x7E6]<<0);
+    eeprom_radio_parameters.frequency=
       (datablock[0x7E3]<<8)+(datablock[0x7E2]<<0)+
       (datablock[0x7E5]<<24)+(datablock[0x7E4]<<16);
-    uint8_t radio_txpower_dbm=datablock[0x7E1];
-    uint8_t radio_max_dutycycle=datablock[0x7E0];
+    eeprom_radio_parameters.txpower=datablock[0x7E1];
+    eeprom_radio_parameters.dutycycle=datablock[0x7E0];
 
     if (format_version!=0x01) {
       fprintf(stderr,"Radio parameter block data format version is 0x%02x, which I don't understand.\n",format_version);
-    } else {    
-      fprintf(stderr,
-	      "                radio max TX power = %d dBm\n",
-	      (int)radio_txpower_dbm);
-      fprintf(stderr,
-	      "              radio max duty-cycle = %d %%\n",
-	      (int)radio_max_dutycycle);
-      fprintf(stderr,
-	      "                   radio air speed = %d Kbit/sec\n",
-	      (int)radio_bitrate);
-      fprintf(stderr,
-	      "            radio centre frequency = %d Hz\n",
-	      (int)radio_centre_frequency);
-      fprintf(stderr,
-	      "regulations require firmware lock? = '%c'\n",
-	      regulatory_lock_required);
-      fprintf(stderr,
-	      "          primary ISO country code = \"%s\"\n",
-	      primary_iso_code);
-
-      // XXX - Store all parameters for reference.  In particular,
-      // we care about radio_max_dutycycle and regulatory_lock_required, so that
-      // we can obey them.
+      problems++;
     }
-  }
-  else fprintf(stderr,
-	       "ERROR: Radio parameter block checksum is wrong:\n"	       
-	       "       Radio will ignore EEPROM data!\n");
 
+  }
+  else {
+    fprintf(stderr,
+	    "ERROR: Radio parameter block checksum is wrong:\n"	       
+	    "       Radio will ignore EEPROM data!\n");
+    problems++;
+  }
+    
   // Parse extended regulatory information (country list etc)
   sha3_Init256();
   sha3_Update(&datablock[0x0400],0x7B0-0x400);
@@ -98,23 +91,16 @@ int eeprom_decode_data(char *msg,unsigned char *datablock)
     int result=mz_uncompress((unsigned char *)regulatory_information,
 			     &regulatory_information_length,
 			     &datablock[0x400], 0x7B0-0x400);
-    if (result!=MZ_OK)
+    if (result!=MZ_OK) {
       fprintf(stderr,"Failed to decompress regulatory information block.\n");
-    else {
-      // XXX - This should be recorded somewhere, so that we can present it using
-      // our web server.
-      fprintf(stderr,
-	      "The information text is as follows:\n  > ");
-      for(i=0;regulatory_information[i];i++) {
-	if (regulatory_information[i]) fprintf(stderr,"%c",regulatory_information[i]);
-	if ((regulatory_information[i]=='\r')||(regulatory_information[i]=='\n'))
-	  fprintf(stderr,"  > ");
-      }
-      fprintf(stderr,"\n");
+      problems++;
     }
-  } else fprintf(stderr,
-		 "ERROR: Radio regulatory information text checksum is wrong:\n"	       
-		 "       LBARD will report only ISO code from radio parameter block.\n");
+  } else {
+    fprintf(stderr,
+	    "ERROR: Radio regulatory information text checksum is wrong:\n"	       
+	    "       LBARD will report only ISO code from radio parameter block.\n");
+    problems++;
+  }
 
   // Parse user extended information area
   sha3_Init256();
@@ -123,29 +109,79 @@ int eeprom_decode_data(char *msg,unsigned char *datablock)
   for(i=0;i<16;i++) if (datablock[0x3F0+i]!=ctx.s[i>>3][i&7]) break;
   if (i==16) {
     fprintf(stderr,
-	    "Mesh-Extender configuration directive text checksum is valid.\n"
-	    "The information text is as follows:\n  > ");
+	    "Mesh-Extender configuration directive text checksum is valid.\n");
     configuration_directives_length=sizeof(configuration_directives);
     int result=mz_uncompress((unsigned char *)configuration_directives,
 			     &configuration_directives_length,
 			     &datablock[0x0], 0x3F0);
-    if (result!=MZ_OK)
+    if (result!=MZ_OK) {
       fprintf(stderr,"Failed to decompress configuration directive block.\n");
-    else {
-    for(i=0;configuration_directives[i];i++) {
-      if (configuration_directives[i])
-	fprintf(stderr,"%c",configuration_directives[i]);
-      if ((configuration_directives[i]=='\r')||(configuration_directives[i]=='\n'))
-	fprintf(stderr,"  > ");
+      problems++;
     }
-    fprintf(stderr,"\n");
-    }
-  } else
+  } else {
     fprintf(stderr,
 	    "ERROR: Mesh-Extender configuration directive block checksum is wrong:\n");
+    problems++;
+  }
+
+  if (problems)
+    fprintf(stderr,"WARNING: Encountered problems decoding EEPROM data.\n"
+	    "         Some data may be incorrect or corrupt.\n");
+  
+  return problems;
+}
+
+int eeprom_display_data(char *msg)
+{
+  int i;
+  
+  fprintf(stderr,"%s\n",msg);
+  
+  fprintf(stderr,
+	  "                radio max TX power = %d dBm\n",
+	  (int)eeprom_radio_parameters.txpower);
+  fprintf(stderr,
+	  "              radio max duty-cycle = %d %%\n",
+	  (int)eeprom_radio_parameters.dutycycle);
+  fprintf(stderr,
+	  "                   radio air speed = %d Kbit/sec\n",
+	  (int)eeprom_radio_parameters.airspeed);
+  fprintf(stderr,
+	  "            radio centre frequency = %d Hz\n",
+	  (int)eeprom_radio_parameters.frequency);
+  fprintf(stderr,
+	  "regulations require firmware lock? = '%c'\n",
+	  eeprom_radio_parameters.lock_firmware);
+  fprintf(stderr,
+	  "          primary ISO country code = \"%c%c\"\n",
+	  eeprom_radio_parameters.primary_country[0],
+	  eeprom_radio_parameters.primary_country[1]
+	  );
+
+  fprintf(stderr,
+	  "Stored configuration directives are as follows:\n  > ");
+  for(i=0;configuration_directives[i];i++) {
+    if (configuration_directives[i])
+      fprintf(stderr,"%c",configuration_directives[i]);
+    if ((configuration_directives[i]=='\r')||(configuration_directives[i]=='\n'))
+      fprintf(stderr,"  > ");
+  }
+  fprintf(stderr,"\n");
+  
+  
+  fprintf(stderr,
+	  "Stored regulatory information text is as follows:\n  > ");
+  for(i=0;regulatory_information[i];i++) {
+    if (regulatory_information[i]) fprintf(stderr,"%c",regulatory_information[i]);
+    if ((regulatory_information[i]=='\r')||(regulatory_information[i]=='\n'))
+      fprintf(stderr,"  > ");
+  }
+  fprintf(stderr,"\n");
+
   
   return 0;
 }
+
 
 int eeprom_parse_line(char *line,unsigned char *datablock)
 {
@@ -451,9 +487,6 @@ int eeprom_program(int argc,char **argv)
       fprintf(stderr,"Could not build datablock to write to EEPROM.\n");
       exit(-1);
     }
-  } else {
-
-    //  flash900 eeprom <serial port> directives commands.
   }
   
   int fd=open(argv[2],O_RDWR);
@@ -493,11 +526,18 @@ int eeprom_program(int argc,char **argv)
 
   unsigned char readblock[2048];
 
+  if (directive_get) {
+    read_entire_eeprom(fd,readblock);
+    
+  }
+
+  if (directive_set) {
+  }
+  
   if (argc==12) {
 
     // Read current contents
     read_entire_eeprom(fd,readblock);        
-    // eeprom_decode_data("Datablock for writing",datablock);
 
     // Write new contents, using read data to suppress unnecessary writes
     write_entire_eeprom(fd,datablock,readblock);
@@ -508,20 +548,29 @@ int eeprom_program(int argc,char **argv)
   read_entire_eeprom(fd,verifyblock);
   int address;
   int problems=0;
-  for(address=0;address<0x800;address++) {
-    if (verifyblock[address]!=datablock[address]) problems++;
+  if (argc==12) {
+    for(address=0;address<0x800;address++) {
+      if (verifyblock[address]!=datablock[address]) problems++;
+    }
   }
   
   if (problems) {
     fprintf(stderr,
 	    "ERROR: %d bytes could not be correctly written.\n"
 	    "       EEPROM data is now most likely corrupt.\n",problems);
-    eeprom_decode_data("Datablock read from EEPROM",verifyblock);
+    eeprom_decode_data(verifyblock);
+    eeprom_display_data("Datablock read from EEPROM");
     fprintf(stderr,
 	    "ERROR: %d bytes could not be correctly written.\n"
 	    "       EEPROM data is now most likely corrupt.\n",problems);
     return -1;
   }
+  if (argc==3) {
+    eeprom_decode_data(verifyblock);
+    eeprom_display_data("Datablock read from EEPROM");
+  }
+
+  
     
   return 0;      
 }
