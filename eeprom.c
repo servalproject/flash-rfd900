@@ -358,6 +358,40 @@ int eeprom_parse_output(int fd,unsigned char *datablock)
   return 0;
 }
 
+int read_eeprom_block(int fd,unsigned char *readblock,int address)
+{
+  char cmd[1024];
+  snprintf(cmd,1024,"!C");
+  write_radio(fd,(unsigned char *)cmd,strlen(cmd));
+  usleep(1000);
+  snprintf(cmd,1024,"%x!g",address);
+  write_radio(fd,(unsigned char *)cmd,strlen(cmd));
+  usleep(5000);
+  snprintf(cmd,1024,"!I");
+  write_radio(fd,(unsigned char *)cmd,strlen(cmd));
+  usleep(105000);
+  eeprom_parse_output(fd,readblock);
+  return 0;
+}
+
+int read_eeprom_directives(int fd,unsigned char *readblock)
+{
+  int address;
+  fprintf(stderr,"Reading directives data from EEPROM"); fflush(stderr);
+  for(address=0;address<0x400;address+=0x80) {
+    read_eeprom_block(fd,readblock,address);
+    if (!readblock[address+0x7F]) break;
+    fprintf(stderr,"."); fflush(stderr);
+  }
+  // Make sure we read hash
+  if (address<0x400) {
+    read_eeprom_block(fd,readblock,0x3F0);    
+  }
+  fprintf(stderr,"\n"); fflush(stderr);
+  return 0;
+}
+
+
 int read_entire_eeprom(int fd,unsigned char *readblock)
 {
   int address;
@@ -487,9 +521,12 @@ int eeprom_build_image(char *configuration_directives_normalised,
 
 void usage()
 {
-  fprintf(stderr,"usage: flash900 eeprom <serial port> [<Mesh Extender configuration directives> <alternate regulatory information> <frequency> <txpower> <dutycycle> <airspeed> <primary country 2-letter code> <firmware lock (Y|N)> <full list of ISO 2-letter country codes>]\n");
+  fprintf(stderr,"usage: flash900 eeprom <serial port> [<Mesh Extender configuration directives|\"\"> <alternate regulatory information|\"\"> <frequency> <txpower> <dutycycle> <airspeed> <primary country 2-letter code> <firmware lock (Y|N)> <full list of ISO 2-letter country codes>]\n");
   fprintf(stderr,"       flash900 eeprom <serial port> directives\n");
+  fprintf(stderr,"       flash900 eeprom <serial port> directives list>\n");
+  fprintf(stderr,"       flash900 eeprom <serial port> directives clear>\n");
   fprintf(stderr,"       flash900 eeprom <serial port> directives get <key>\n");
+  fprintf(stderr,"       flash900 eeprom <serial port> directives del <key>\n");
   fprintf(stderr,"       flash900 eeprom <serial port> directives set <key> <value>\n");
   fprintf(stderr," e.g.: flash900 eeprom /dev/cu.usbserial-AARDVARK \"OTABID=918f8a6684c861f68c1f6c468c4c684\\nMESHEXTENDERNAME=Adelaide1\\nLATITUDE=-35\\nLONGITUDE=+138\\n\" \"\" 923000000 24 100 128 AU N AU,NZ,US,CA,VU\n");
   fprintf(stderr," e.g.: flash900 eeprom /dev/cu.usbserial-AARDVARK\n");
@@ -508,17 +545,29 @@ int eeprom_program(int argc,char **argv)
   int parameters_show=0;
   int directive_get=0;
   int directive_set=0;
+  int directive_list=0;
+  int directive_clear=0;
   char *directive_key=NULL;
   char *directive_value=NULL;
     
   if ((argc>3)&&(argc<8)) {
     if (strcasecmp(argv[3],"directives")) { usage(); exit(-1); }
     if (argc>4) {
-      if (!strcasecmp(argv[4],"get")) {
+      if (!strcasecmp(argv[4],"clear")) {
+	if (argc==5) directive_clear=1;
+      } else if (!strcasecmp(argv[4],"list")) {
+	if (argc==5) directive_list=1;
+      } else if (!strcasecmp(argv[4],"get")) {
 	if (argc==6) {
 	  directive_get=1;
 	  directive_key=argv[5];
 	} else { usage(); exit(-1); }
+      } else if (!strcasecmp(argv[4],"del")) {
+	if (argc==6) {
+	  directive_key=argv[5];
+	  directive_value="";
+	  directive_set=1;
+	}	
       } else if (!strcasecmp(argv[4],"set")) {
 	if (argc==7) {
 	  directive_key=argv[5];
@@ -537,64 +586,11 @@ int eeprom_program(int argc,char **argv)
   char *regulatory_information_input=argv[4];
   char *country_list=argv[11];
 
-  radio_parameters.frequency=atoi(argv[5]);
-  radio_parameters.txpower=atoi(argv[6]?argv[6]:"0");  
-  radio_parameters.dutycycle=atoi(argv[7]?argv[7]:"0");  
-  radio_parameters.airspeed=atoi(argv[8]?argv[8]:"0");
-  radio_parameters.primary_country[0]=argv[9][0];
-  radio_parameters.primary_country[1]=argv[9][1];
-  radio_parameters.lock_firmware=argv[10][0];
-  
   // Start with blank memory block
   unsigned char datablock[2048];
   memset(&datablock[0],0,2048-64);
   memset(&datablock[2048-64],0,64);
-    
-  if (argc==12) {
-    // Compress user data and alternate regulatory information into EEPROM.
-    // If no alternate regulatory information is provided, generate default
-    // information based on the set of countries listed.
 
-    char configuration_directives_normalised[16384];
-    int cdn_len=0;
-    for(int i=0;configuration_directives_input[i];i++) {
-      if (configuration_directives_input[i]=='\\') {
-	i++;
-	switch(configuration_directives_input[i]) {
-	case 'n': configuration_directives_normalised[cdn_len++]='\n'; break;
-	case 'r': configuration_directives_normalised[cdn_len++]='\r'; break;
-	case 'b': configuration_directives_normalised[cdn_len++]='\b'; break;
-	case '\\': configuration_directives_normalised[cdn_len++]='\\'; break;
-	}
-      } else configuration_directives_normalised[cdn_len++]
-	       =configuration_directives_input[i];
-    }
-
-    // Generate default regulatory information, if required
-    if (!regulatory_information_input[0]) {
-      generate_regulatory_information(regulatory_information,
-				      16384,
-				      radio_parameters.primary_country,
-				      country_list,
-				      radio_parameters.frequency,
-				      radio_parameters.txpower,
-				      radio_parameters.dutycycle);
-      fprintf(stderr,"Auto-generating regulatory boilerplate information text"
-	      " (%d bytes long).\n",(int)strlen(regulatory_information));
-    } else {
-      strncpy(regulatory_information,regulatory_information_input,16384);
-      fprintf(stderr,"Using user-supplied regulatory information text.\n");
-    }
-    
-    if (eeprom_build_image(configuration_directives_normalised,
-			   regulatory_information,
-			   radio_parameters,
-			   datablock)) {
-      fprintf(stderr,"Could not build datablock to write to EEPROM.\n");
-      exit(-1);
-    }
-  }
-  
   int fd=open(argv[2],O_RDWR);
   if (fd==-1) {
     fprintf(stderr,"Could not open serial port '%s'\n",argv[2]);
@@ -632,14 +628,99 @@ int eeprom_program(int argc,char **argv)
 
   unsigned char readblock[2048];
 
+  if (parameters_set) {
+    // Compress user data and alternate regulatory information into EEPROM.
+    // If no alternate regulatory information is provided, generate default
+    // information based on the set of countries listed.
+
+    char configuration_directives_normalised[16384];
+    int cdn_len=0;
+    for(int i=0;configuration_directives_input[i];i++) {
+      if (configuration_directives_input[i]=='\\') {
+	i++;
+	switch(configuration_directives_input[i]) {
+	case 'n': configuration_directives_normalised[cdn_len++]='\n'; break;
+	case 'r': configuration_directives_normalised[cdn_len++]='\r'; break;
+	case 'b': configuration_directives_normalised[cdn_len++]='\b'; break;
+	case '\\': configuration_directives_normalised[cdn_len++]='\\'; break;
+	}
+      } else configuration_directives_normalised[cdn_len++]
+	       =configuration_directives_input[i];
+    }
+
+    // Generate default regulatory information, if required
+    if (!regulatory_information_input[0]) {
+      generate_regulatory_information(regulatory_information,
+				      16384,
+				      radio_parameters.primary_country,
+				      country_list,
+				      radio_parameters.frequency,
+				      radio_parameters.txpower,
+				      radio_parameters.dutycycle);
+      fprintf(stderr,"Auto-generating regulatory boilerplate information text"
+	      " (%d bytes long).\n",(int)strlen(regulatory_information));
+    } else {
+      strncpy(regulatory_information,regulatory_information_input,16384);
+      fprintf(stderr,"Using user-supplied regulatory information text.\n");
+    }
+
+    if (!configuration_directives_input[0]) {
+      // Keep old configuration directives
+      read_eeprom_directives(fd,readblock);
+      eeprom_decode_data(readblock);
+      strcpy(configuration_directives_normalised,
+	     configuration_directives);
+    }
+
+    // But always replace radio parameters
+    radio_parameters.frequency=atoi(argv[5]);
+    radio_parameters.txpower=atoi(argv[6]?argv[6]:"0");  
+    radio_parameters.dutycycle=atoi(argv[7]?argv[7]:"0");  
+    radio_parameters.airspeed=atoi(argv[8]?argv[8]:"0");
+    radio_parameters.primary_country[0]=argv[9][0];
+    radio_parameters.primary_country[1]=argv[9][1];
+    radio_parameters.lock_firmware=argv[10][0];
+    
+    if (eeprom_build_image(configuration_directives_normalised,
+			   regulatory_information,
+			   radio_parameters,
+			   datablock)) {
+      fprintf(stderr,"Could not build datablock to write to EEPROM.\n");
+      exit(-1);
+    }
+  }
+  
+  if (directive_list) {
+    read_eeprom_directives(fd,readblock);
+    eeprom_decode_data(readblock);
+    directives_to_list();
+    for(int i=0;i<directive_count;i++)
+      printf("%s=%s\n",directives[i].key,directives[i].value);
+    return 0;
+  }
+  
   if (directive_get) {
-    read_entire_eeprom(fd,readblock);
+    read_eeprom_directives(fd,readblock);
     eeprom_decode_data(readblock);
     directives_to_list();
     for(int i=0;i<directive_count;i++)
       if (!strcasecmp(directive_key,directives[i].key))
 	printf("%s=%s\n",directives[i].key,directives[i].value);
     return 0;
+  }
+
+  if (directive_clear) {
+    read_entire_eeprom(fd,readblock);
+    eeprom_decode_data(readblock);
+    configuration_directives[0]=0;
+    if (eeprom_build_image(configuration_directives,
+			   regulatory_information,
+			   radio_parameters,
+			   datablock)) {
+      fprintf(stderr,"Could not build datablock to write to EEPROM.\n");
+      exit(-1);
+    }
+    write_entire_eeprom(fd,datablock,readblock);    
   }
 
   if (directive_set) {
@@ -655,14 +736,14 @@ int eeprom_program(int argc,char **argv)
       fprintf(stderr,"Could not build datablock to write to EEPROM.\n");
       exit(-1);
     }
-    write_entire_eeprom(fd,datablock,readblock);
-    
+    write_entire_eeprom(fd,datablock,readblock);    
   }
+  
   
   if (parameters_set) {
 
     // Read current contents
-    read_entire_eeprom(fd,readblock);        
+    read_entire_eeprom(fd,readblock);
 
     // Write new contents, using read data to suppress unnecessary writes
     write_entire_eeprom(fd,datablock,readblock);
