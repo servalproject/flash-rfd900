@@ -459,9 +459,9 @@ int eeprom_program(int argc,char **argv)
 
   if (argc==12) {
 
-    // Show current contents
+    // Read current contents
     read_entire_eeprom(fd,readblock);        
-    eeprom_decode_data("Datablock for writing",datablock);
+    // eeprom_decode_data("Datablock for writing",datablock);
 
     // Write new contents, using read data to suppress unnecessary writes
     write_entire_eeprom(fd,datablock,readblock);
