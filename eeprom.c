@@ -344,16 +344,49 @@ int eeprom_build_image(char *configuration_directives_normalised,
 
   return 0;
 }
-  
+
+void usage()
+{
+  fprintf(stderr,"usage: flash900 eeprom <serial port> [<Mesh Extender configuration directives> <alternate regulatory information> <frequency> <txpower> <dutycycle> <airspeed> <primary country 2-letter code> <firmware lock (Y|N)> <full list of ISO 2-letter country codes>]\n");
+  fprintf(stderr,"       flash900 eeprom <serial port> directives\n");
+  fprintf(stderr,"       flash900 eeprom <serial port> directives get <key>\n");
+  fprintf(stderr,"       flash900 eeprom <serial port> directives set <key> <value>\n");
+  fprintf(stderr," e.g.: flash900 eeprom /dev/cu.usbserial-AARDVARK \"OTABID=918f8a6684c861f68c1f6c468c4c684\\nMESHEXTENDERNAME=Adelaide1\\nLATITUDE=-35\\nLONGITUDE=+138\\n\" \"\" 923000000 24 100 128 AU N AU,NZ,US,CA,VU\n");
+  fprintf(stderr," e.g.: flash900 eeprom /dev/cu.usbserial-AARDVARK\n");
+  fprintf(stderr," e.g.: flash900 eeprom /dev/cu.usbserial-AARDVARK directive get OTABID\n");
+  fprintf(stderr," e.g.: flash900 eeprom /dev/cu.usbserial-AARDVARK directive set MESHEXTENDERNAME \"my mesh extender\"\n");
+  return;
+}
+
 int eeprom_program(int argc,char **argv)
 {
   if ((argc!=12)&&((argc<3)||(argc>7))) {
-    fprintf(stderr,"usage: flash900 eeprom <serial port> [<Mesh Extender configuration directives> <alternate regulatory information> <frequency> <txpower> <dutycycle> <airspeed> <primary country 2-letter code> <firmware lock (Y|N)> <full list of ISO 2-letter country codes>]\n");
-    fprintf(stderr,"       flash900 eeprom <serial port> directives\n");
-    fprintf(stderr,"       flash900 eeprom <serial port> directives get <key>\n");
-    fprintf(stderr,"       flash900 eeprom <serial port> directives set <key> <value>\n");
-    fprintf(stderr," e.g.: flash900 eeprom /dev/cu.usbserial-AARDVARK \"OTABID=918f8a6684c861f68c1f6c468c4c684\\nMESHEXTENDERNAME=Adelaide1\\nLATITUDE=-35\\nLONGITUDE=+138\\n\" \"\" 923000000 24 100 128 AU N AU,NZ,US,CA,VU\n");
-    exit(-1);
+    usage(); exit(-1);
+  }
+
+  int directive_get=0;
+  int directive_set=0;
+  char *directive_key=NULL;
+  char *directive_value=NULL;
+    
+  if ((argc>3)&&(argc<8)) {
+    if (strcasecmp(argv[3],"directives")) { usage(); exit(-1);
+      if (argc>4) {
+	if (strcasecmp(argv[4],"get")) {
+	  if (argc==6) {
+	    directive_get=1;
+	    directive_key=argv[5];
+	  } else { usage(); exit(-1); }
+	}
+	else if (strcasecmp(argv[4],"set")) {
+	  if (argc==7) {
+	    directive_key=argv[5];
+	    directive_value=argv[6];
+	    directive_set=1;
+	  } else { usage(); exit(-1); }
+	} else  { usage(); exit(-1); }
+      }
+    }
   }
 
   struct radio_parameters radio_parameters;
@@ -418,6 +451,9 @@ int eeprom_program(int argc,char **argv)
       fprintf(stderr,"Could not build datablock to write to EEPROM.\n");
       exit(-1);
     }
+  } else {
+
+    //  flash900 eeprom <serial port> directives commands.
   }
   
   int fd=open(argv[2],O_RDWR);
