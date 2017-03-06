@@ -65,8 +65,8 @@ int generate_regulatory_information(char *out,int max_len,char *primary_country,
       append_string(out,&offset,max_len,piece);
     }
   append_string(out,&offset,max_len,"</table>\n\n");
-  snprintf(piece,1024,"<p class=radioparameters>The radio is configured to operate at %ul Hz, with a transmit power of %d dBm, and a maximum duty cycle of %d %%.\n",
-	   frequency,max_txpower,duty_cycle);
+  snprintf(piece,1024,"<p class=radioparameters>The radio is configured to operate at %u Hz, with a transmit power of %d dBm, and a maximum duty cycle of %d %%.\n",
+	   (unsigned)frequency,max_txpower,duty_cycle);
   append_string(out,&offset,max_len,piece);
   
   out[offset]=0; return 0;

@@ -659,6 +659,15 @@ int eeprom_program(int argc,char **argv)
 	       =configuration_directives_input[i];
     }
 
+    // Set actual radio parameters
+    radio_parameters.frequency=atoi(argv[5]);
+    radio_parameters.txpower=atoi(argv[6]?argv[6]:"0");  
+    radio_parameters.dutycycle=atoi(argv[7]?argv[7]:"0");  
+    radio_parameters.airspeed=atoi(argv[8]?argv[8]:"0");
+    radio_parameters.primary_country[0]=argv[9][0];
+    radio_parameters.primary_country[1]=argv[9][1];
+    radio_parameters.lock_firmware=argv[10][0];
+
     // Generate default regulatory information, if required
     if (!regulatory_information_input[0]) {
       generate_regulatory_information(regulatory_information,
@@ -682,15 +691,6 @@ int eeprom_program(int argc,char **argv)
       strcpy(configuration_directives_normalised,
 	     configuration_directives);
     }
-
-    // But always replace radio parameters
-    radio_parameters.frequency=atoi(argv[5]);
-    radio_parameters.txpower=atoi(argv[6]?argv[6]:"0");  
-    radio_parameters.dutycycle=atoi(argv[7]?argv[7]:"0");  
-    radio_parameters.airspeed=atoi(argv[8]?argv[8]:"0");
-    radio_parameters.primary_country[0]=argv[9][0];
-    radio_parameters.primary_country[1]=argv[9][1];
-    radio_parameters.lock_firmware=argv[10][0];
     
     if (eeprom_build_image(configuration_directives_normalised,
 			   regulatory_information,
