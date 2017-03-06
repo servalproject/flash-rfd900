@@ -459,23 +459,33 @@ int eeprom_program(int argc,char **argv)
 
   if (argc==12) {
 
-    read_entire_eeprom(fd,readblock);
-        
-    // Write it
-    
+    // Show current contents
+    read_entire_eeprom(fd,readblock);        
     eeprom_decode_data("Datablock for writing",datablock);
 
+    // Write new contents, using read data to suppress unnecessary writes
     write_entire_eeprom(fd,datablock,readblock);
   }
   
   // Verify it
-  // Use <addr>!g, !E commands to read out EEPROM data
   unsigned char verifyblock[2048];
-
   read_entire_eeprom(fd,verifyblock);
-
-  //  ++debug; dump_bytes("EEPROM data",verifyblock,2048);
-  eeprom_decode_data("Datablock read from EEPROM",verifyblock);
+  int address;
+  int problems=0;
+  for(address=0;address<0x800;address++) {
+    if (verifyblock[address]!=datablock[address]) problems++;
+  }
+  
+  if (problems) {
+    fprintf(stderr,
+	    "ERROR: %d bytes could not be correctly written.\n"
+	    "       EEPROM data is now most likely corrupt.\n",problems);
+    eeprom_decode_data("Datablock read from EEPROM",verifyblock);
+    fprintf(stderr,
+	    "ERROR: %d bytes could not be correctly written.\n"
+	    "       EEPROM data is now most likely corrupt.\n",problems);
+    return -1;
+  }
     
   return 0;      
 }
