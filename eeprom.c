@@ -32,6 +32,110 @@ unsigned long configuration_directives_length=strlen("nodirectives=true\n");
 
 int eeprom_write_page(int fd, int address,unsigned char *readblock);
 
+struct directive {
+  char *key;
+  char *value;
+};
+
+#define MAX_DIRECTIVES 1024
+struct directive directives[MAX_DIRECTIVES];
+int directive_count=0;
+
+int directives_to_list()
+{
+  int i;
+  for(i=0;i<directive_count;i++) {
+    free(directives[i].key); directives[i].key=NULL;
+    free(directives[i].value); directives[i].value=NULL;
+  }
+  directive_count=0;
+
+  char key[1024];
+  char value[1024];
+  char line[1024];
+  int len=0;
+
+  for(i=0;i<=strlen(configuration_directives);i++) {
+    switch(configuration_directives[i]) {
+    case '\n': case '\r': case 0:
+      line[len]=0;
+      if (sscanf(line,"%[^=]=%[^=\r\n]",key,value)==2) {
+	if (directive_count<MAX_DIRECTIVES) {
+	  directives[directive_count].key=strdup(key);
+	  directives[directive_count++].value=strdup(value);
+	} else {
+	  fprintf(stderr,"Configuration directives block contains too many entries (max = %d)\n",MAX_DIRECTIVES);
+	  exit(-1);
+	}	      
+      }
+      len=0;
+      break;
+    default:
+      if (len<1000) line[len++]=configuration_directives[i];
+      break;
+    }
+  }
+  return 0;
+}
+
+int directives_from_list()
+{
+  int i;
+  char line[1024];
+  int offset=0;
+  for(i=0;i<directive_count;i++) {
+    if ((strlen(directives[i].key)+strlen(directives[i].value))>=1000) {
+      fprintf(stderr,"Directive too long: %s=%s\n",
+	      directives[i].key,directives[i].value);
+      exit(-1);
+    }
+    snprintf(line,1024,"%s=%s\n",directives[i].key,directives[i].value);
+    if ((strlen(line)+offset)<16383) {
+      bcopy(line,&configuration_directives[offset],strlen(line));
+      offset+=strlen(line);
+    } else {
+      fprintf(stderr,"Total length of configuration directives too long.\n");
+      exit(-1);
+    }
+  }
+  configuration_directives[offset]=0;
+  configuration_directives_length=offset;
+  return 0;
+}
+
+int directive_set_value(char *directive_key,char *directive_value)
+{
+  int i;
+  for(i=0;i<directive_count;i++)
+    if (!strcasecmp(directive_key,directives[i].key))
+      {
+	if (directive_value[0]) {
+	  // Set directive value
+	  free(directives[i].value);
+	  directives[i].value=strdup(directive_value);
+	} else {
+	  // Clear directive
+	  free(directives[i].key); free(directives[i].value);
+	  directives[i].key=NULL; directives[i].value=NULL;
+	  directives[i]=directives[directive_count-1];
+	  directive_count--;	   
+	}
+	break;
+      }
+  if (i==directive_count&&directive_value[0]) {
+    if (directive_count>=MAX_DIRECTIVES) {
+      fprintf(stderr,"Too many configuration directives (limit = %d)\n",
+	      MAX_DIRECTIVES);
+      exit(-1);
+    } else {
+      directives[directive_count].key=strdup(directive_key);
+      directives[directive_count].value=strdup(directive_value);
+      directive_count++;
+    }
+  }
+  return 0;
+}
+
 int eeprom_decode_data(unsigned char *datablock)
 {
 
@@ -400,30 +504,32 @@ int eeprom_program(int argc,char **argv)
     usage(); exit(-1);
   }
 
+  int parameters_set=0;
+  int parameters_show=0;
   int directive_get=0;
   int directive_set=0;
   char *directive_key=NULL;
   char *directive_value=NULL;
     
   if ((argc>3)&&(argc<8)) {
-    if (strcasecmp(argv[3],"directives")) { usage(); exit(-1);
-      if (argc>4) {
-	if (strcasecmp(argv[4],"get")) {
-	  if (argc==6) {
-	    directive_get=1;
-	    directive_key=argv[5];
-	  } else { usage(); exit(-1); }
-	}
-	else if (strcasecmp(argv[4],"set")) {
-	  if (argc==7) {
-	    directive_key=argv[5];
-	    directive_value=argv[6];
-	    directive_set=1;
-	  } else { usage(); exit(-1); }
-	} else  { usage(); exit(-1); }
-      }
+    if (strcasecmp(argv[3],"directives")) { usage(); exit(-1); }
+    if (argc>4) {
+      if (!strcasecmp(argv[4],"get")) {
+	if (argc==6) {
+	  directive_get=1;
+	  directive_key=argv[5];
+	} else { usage(); exit(-1); }
+      } else if (!strcasecmp(argv[4],"set")) {
+	if (argc==7) {
+	  directive_key=argv[5];
+	  directive_value=argv[6];
+	  directive_set=1;
+	} else { usage(); exit(-1); }
+      } else  { usage(); exit(-1); }
     }
   }
+  if (argc==12) parameters_set=1;
+  if (argc==3) parameters_show=1;
 
   struct radio_parameters radio_parameters;
   
@@ -528,13 +634,32 @@ int eeprom_program(int argc,char **argv)
 
   if (directive_get) {
     read_entire_eeprom(fd,readblock);
-    
+    eeprom_decode_data(readblock);
+    directives_to_list();
+    for(int i=0;i<directive_count;i++)
+      if (!strcasecmp(directive_key,directives[i].key))
+	printf("%s=%s\n",directives[i].key,directives[i].value);
+    return 0;
   }
 
   if (directive_set) {
+    read_entire_eeprom(fd,readblock);
+    eeprom_decode_data(readblock);
+    directives_to_list();
+    directive_set_value(directive_key,directive_value);
+    directives_from_list();
+    if (eeprom_build_image(configuration_directives,
+			   regulatory_information,
+			   radio_parameters,
+			   datablock)) {
+      fprintf(stderr,"Could not build datablock to write to EEPROM.\n");
+      exit(-1);
+    }
+    write_entire_eeprom(fd,datablock,readblock);
+    
   }
   
-  if (argc==12) {
+  if (parameters_set) {
 
     // Read current contents
     read_entire_eeprom(fd,readblock);        
@@ -548,7 +673,7 @@ int eeprom_program(int argc,char **argv)
   read_entire_eeprom(fd,verifyblock);
   int address;
   int problems=0;
-  if (argc==12) {
+  if (parameters_set) {
     for(address=0;address<0x800;address++) {
       if (verifyblock[address]!=datablock[address]) problems++;
     }
@@ -565,7 +690,7 @@ int eeprom_program(int argc,char **argv)
 	    "       EEPROM data is now most likely corrupt.\n",problems);
     return -1;
   }
-  if (argc==3) {
+  if (parameters_show) {
     eeprom_decode_data(verifyblock);
     eeprom_display_data("Datablock read from EEPROM");
   }
