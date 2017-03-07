@@ -320,24 +320,30 @@ int line_len=0;
 
 long long gettime_ms();
 
-int eeprom_parse_output(int fd,unsigned char *datablock)
+int eeprom_parse_output(int fd,unsigned char *datablock, int address)
 {
   char buffer[16384];
   int offset=0;
   int count;
 
+  int bytes=160+15;
+  if (address<0x10) bytes-=2;
+  else if (address<0x100) bytes-=1;
+
   long long start=gettime_ms();
   long long now;
   while(1) {
-    now=gettime_ms();
     count=get_radio_reply(fd,&buffer[offset],16384-offset,0);
-    // if (count>0) fprintf(stderr,"%d bytes at T+%lldms\n",count,now-start);
+    now=gettime_ms();
+    // if (count>0) fprintf(stderr,"* %d bytes at T+%lldms\n",count,now-start);
     if (count>0) offset+=count;
-    if (offset>=(15+160)) break;
+    if (offset>=bytes) break;
     usleep(1000);
     if ((now-start)>200) break;
   }
   count=offset;
+  // now=gettime_ms();
+  // if (count>0) fprintf(stderr,"%d bytes at T+%lldms\n",count,now-start);
     
   
   for(int i=0;i<count;i++) {
@@ -391,7 +397,10 @@ int read_eeprom_block(int fd,unsigned char *readblock,int address)
   usleep(5000);
   snprintf(cmd,1024,"!I");
   write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-  eeprom_parse_output(fd,readblock);
+  long long start=gettime_ms();
+  eeprom_parse_output(fd,readblock,address);
+  long long end=gettime_ms();
+  // fprintf(stderr,"[%lldms]",end-start);
   return 0;
 }
 
