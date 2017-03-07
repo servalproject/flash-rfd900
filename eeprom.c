@@ -401,7 +401,10 @@ int read_eeprom_directives(int fd,unsigned char *readblock)
   fprintf(stderr,"Reading directives data from EEPROM"); fflush(stderr);
   for(address=0;address<0x400;address+=0x80) {
     read_eeprom_block(fd,readblock,address);
-    if (!readblock[address+0x7F]) break;
+    if (!(readblock[address+0x7D]
+	  |readblock[address+0x7E]
+	  |readblock[address+0x7F]))
+      break;
     fprintf(stderr,"."); fflush(stderr);
   }
   // Make sure we read hash
