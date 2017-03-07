@@ -11,6 +11,8 @@ extern int last_baud;
 
 extern int debug;
 
+extern int silent_mode;
+
 int setup_serial_port(int fd, int baud);
 int change_radio_to(int fd,int speed);
 int detect_speed(int fd);

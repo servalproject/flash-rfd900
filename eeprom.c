@@ -160,7 +160,8 @@ int eeprom_decode_data(unsigned char *datablock,int flags)
     int i;
     for(i=0;i<16;i++) if (datablock[0x7F0+i]!=ctx.s[i>>3][i&7]) break;
     if (i==16) {
-      fprintf(stderr,"Radio parameter block checksum valid.\n");
+      if (!silent_mode)
+	fprintf(stderr,"Radio parameter block checksum valid.\n");
       
       uint8_t format_version=datablock[0x7EF];
       eeprom_radio_parameters.primary_country[0]=datablock[0x7ED];
@@ -192,8 +193,9 @@ int eeprom_decode_data(unsigned char *datablock,int flags)
     sha3_Finalize();
     for(i=0;i<16;i++) if (datablock[0x7B0+i]!=ctx.s[i>>3][i&7]) break;
     if (i==16) {
-      fprintf(stderr,
-	      "Radio regulatory information text checksum is valid.\n");
+      if (!silent_mode)
+	fprintf(stderr,
+		"Radio regulatory information text checksum is valid.\n");
       regulatory_information_length=sizeof(regulatory_information);
       int result=mz_uncompress((unsigned char *)regulatory_information,
 			       &regulatory_information_length,
@@ -217,8 +219,9 @@ int eeprom_decode_data(unsigned char *datablock,int flags)
   int i;
   for(i=0;i<16;i++) if (datablock[0x3F0+i]!=ctx.s[i>>3][i&7]) break;
   if (i==16) {
-    fprintf(stderr,
-	    "Mesh-Extender configuration directive text checksum is valid.\n");
+    if (!silent_mode)
+      fprintf(stderr,
+	      "Mesh-Extender configuration directive text checksum is valid.\n");
     configuration_directives_length=sizeof(configuration_directives);
     int result=mz_uncompress((unsigned char *)configuration_directives,
 			     &configuration_directives_length,
@@ -397,9 +400,9 @@ int read_eeprom_block(int fd,unsigned char *readblock,int address)
   usleep(5000);
   snprintf(cmd,1024,"!I");
   write_radio(fd,(unsigned char *)cmd,strlen(cmd));
-  long long start=gettime_ms();
+  // long long start=gettime_ms();
   eeprom_parse_output(fd,readblock,address);
-  long long end=gettime_ms();
+  // long long end=gettime_ms();
   // fprintf(stderr,"[%lldms]",end-start);
   return 0;
 }
@@ -407,20 +410,20 @@ int read_eeprom_block(int fd,unsigned char *readblock,int address)
 int read_eeprom_directives(int fd,unsigned char *readblock)
 {
   int address;
-  fprintf(stderr,"Reading directives data from EEPROM"); fflush(stderr);
+  if (!silent_mode) fprintf(stderr,"Reading directives data from EEPROM"); fflush(stderr);
   for(address=0;address<0x400;address+=0x80) {
     read_eeprom_block(fd,readblock,address);
     if (!(readblock[address+0x7D]
 	  |readblock[address+0x7E]
 	  |readblock[address+0x7F]))
       break;
-    fprintf(stderr,"."); fflush(stderr);
+    if (!silent_mode) fprintf(stderr,"."); fflush(stderr);
   }
   // Make sure we read hash
   if (address<0x400) {
     read_eeprom_block(fd,readblock,0x3F0);    
   }
-  fprintf(stderr,"\n"); fflush(stderr);
+  if (!silent_mode) fprintf(stderr,"\n"); fflush(stderr);
   return 0;
 }
 
@@ -428,12 +431,12 @@ int read_eeprom_directives(int fd,unsigned char *readblock)
 int read_entire_eeprom(int fd,unsigned char *readblock)
 {
   int address;
-  fprintf(stderr,"Reading data from EEPROM"); fflush(stderr);
+  if (!silent_mode) fprintf(stderr,"Reading data from EEPROM"); fflush(stderr);
   for(address=0;address<0x800;address+=0x80) {
     read_eeprom_block(fd,readblock,address);
-    fprintf(stderr,"."); fflush(stderr);
+    if (!silent_mode) fprintf(stderr,"."); fflush(stderr);
   }
-  fprintf(stderr,"\n"); fflush(stderr);
+  if (!silent_mode) fprintf(stderr,"\n"); fflush(stderr);
   return 0;
 }
 
@@ -441,7 +444,7 @@ int write_entire_eeprom(int fd,unsigned char *datablock,unsigned char *readblock
 {
   // Use <addr>!g!y<data>!w sequence to write each 16 bytes
   int problems=0,address;
-  fprintf(stderr,"Writing data to EEPROM\n"); fflush(stderr);
+  if (!silent_mode) fprintf(stderr,"Writing data to EEPROM\n"); fflush(stderr);
   
   for(address=0;address<0x800;address+=0x10) {
     
@@ -467,9 +470,10 @@ int write_entire_eeprom(int fd,unsigned char *datablock,unsigned char *readblock
     
     problems+=result;
         
-    fprintf(stderr,"\rWrote $%x - $%x",address,address+0x10-1); fflush(stderr);
+    if (!silent_mode)
+      fprintf(stderr,"\rWrote $%x - $%x",address,address+0x10-1); fflush(stderr);
   }
-  fprintf(stderr,"\n");
+  if (!silent_mode) fprintf(stderr,"\n");
   if (problems)
     fprintf(stderr,
 	    "WARNING: A total of %d problems occurred during writing.\n",problems);
@@ -500,8 +504,9 @@ int eeprom_build_image(char *configuration_directives_normalised,
 	    result);
     return(-1);
   } else
-    fprintf(stderr,"Regulatory information text required %d bytes (0x%03x-0x%03x)\n",
-	    (int)bytes_used,0x400,0x400+(int)bytes_used);
+    if (!silent_mode)
+      fprintf(stderr,"Regulatory information text required %d bytes (0x%03x-0x%03x)\n",
+	      (int)bytes_used,0x400,0x400+(int)bytes_used);
   
   // Set format version
   datablock[0x7EF]=0x01;
@@ -558,12 +563,14 @@ void usage()
   return;
 }
 
+int silent_mode=0;
+
 int eeprom_program(int argc,char **argv)
 {
   if ((argc!=12)&&((argc<3)||(argc>7))) {
     usage(); exit(-1);
   }
-
+  
   int parameters_set=0;
   int parameters_show=0;
   int directive_get=0;
@@ -575,6 +582,7 @@ int eeprom_program(int argc,char **argv)
     
   if ((argc>3)&&(argc<8)) {
     if (strcasecmp(argv[3],"directives")) { usage(); exit(-1); }
+    silent_mode=1;
     if (argc>4) {
       if (!strcasecmp(argv[4],"clear")) {
 	if (argc==5) directive_clear=1;
@@ -635,7 +643,7 @@ int eeprom_program(int argc,char **argv)
     usleep(20000);
     int count=get_radio_reply(fd,buffer,1024,0);
     if (memmem(buffer,count,"EPRADDR=$0",10)) {
-      fprintf(stderr,"Radio is ready.\n");
+      if (!silent_mode) fprintf(stderr,"Radio is ready.\n");
     } else {
       if (detect_speed(fd)) {
 	fprintf(stderr,"Could not detect radio speed and mode. Sorry.\n");

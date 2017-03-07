@@ -85,21 +85,23 @@ int radio_in_at_command_mode(int fd)
   write_radio(fd,(unsigned char *)"AT\r",3);
   int bytes=get_radio_reply(fd,buffer,8192,1);
   if (strstr(buffer,"OK")) {
-    printf("Got OK reply to AT, so assuming that we are in command mode.\n");
+    if (!silent_mode) printf("Got OK reply to AT, so assuming that we are in command mode.\n");
     return 1;
   } else {
-    printf("We don't seem to be in AT command mode.\n");
-    debug++;
-    dump_bytes("This is what I saw echoed back",
-	       (unsigned char *)buffer,bytes);
-    debug--;
+    if (!silent_mode) {
+      printf("We don't seem to be in AT command mode.\n");
+      debug++;
+      dump_bytes("This is what I saw echoed back",
+		 (unsigned char *)buffer,bytes);
+      debug--;
+    }
     return 0;
   }
 }
 
 int switch_to_online_mode(int fd)
 {
-  fprintf(stderr,"Switching to online mode.\n");
+  if (!silent_mode) fprintf(stderr,"Switching to online mode.\n");
   
   if (onlinemode) return 0;
   if (bootloadermode) {
@@ -120,7 +122,7 @@ int switch_to_online_mode(int fd)
 
 int switch_to_at_mode(int fd)
 {
-  fprintf(stderr,"Attempting to switch to AT command mode.\n");
+  if (!silent_mode) fprintf(stderr,"Attempting to switch to AT command mode.\n");
 
   
   char buffer[8192];
@@ -136,7 +138,7 @@ int switch_to_at_mode(int fd)
   }
   if (strstr(buffer,"OK")) {
     if (radio_in_at_command_mode(fd)) {
-      fprintf(stderr,"Yes, we are in command mode.\n");
+      if (!silent_mode) fprintf(stderr,"Yes, we are in command mode.\n");
       atmode=1;
       onlinemode=0;
       return 0;
@@ -150,7 +152,7 @@ int switch_to_at_mode(int fd)
 
 int switch_to_bootloader(int fd)
 {
-  fprintf(stderr,"Attempting to switch to bootloader mode.\n");
+  if (!silent_mode) fprintf(stderr,"Attempting to switch to bootloader mode.\n");
 
   try_bang_B(fd);
   
@@ -164,7 +166,7 @@ int switch_to_bootloader(int fd)
   }
   
   // try AT&UPDATE or ATS1=115\rAT&W\rATZ if the modem isn't already on 115200bps
-  printf("Switching to boot loader...\n");
+  if (!silent_mode) printf("Switching to boot loader...\n");
   clear_waiting_bytes(fd);
   char *cmd="AT&UPDATE\r\n";
   write_radio(fd,(unsigned char *)cmd,strlen(cmd));
@@ -176,7 +178,7 @@ int switch_to_bootloader(int fd)
   }
 
   if (!strcmp(cmd,buffer)) {
-    fprintf(stderr,"Looks like we have switched to the bootloader from AT command mode.\n");
+    if (!silent_mode) fprintf(stderr,"Looks like we have switched to the bootloader from AT command mode.\n");
     setup_serial_port(fd,115200);
 
     atmode=0;
@@ -205,7 +207,7 @@ int switch_to_bootloader(int fd)
       bootloadermode=1;
       atmode=0;
       onlinemode=0;
-      fprintf(stderr,"Radio is already in boot loader @ 115200\n");
+      if (!silent_mode) fprintf(stderr,"Radio is already in boot loader @ 115200\n");
       return 0;
     }    
     
@@ -258,7 +260,7 @@ int try_bang_B(int fd)
       bootloadermode=1;
       atmode=0;
       onlinemode=0;
-      fprintf(stderr,"Radio is in boot loader @ 115200 (via !B)\n");
+      if (!silent_mode) fprintf(stderr,"Radio is in boot loader @ 115200 (via !B)\n");
       return 0;
     }
 
@@ -317,16 +319,17 @@ int detect_speed(int fd)
     bootloadermode=1;
     atmode=0;
     onlinemode=0;
-    fprintf(stderr,"Radio is already in boot loader @ 115200\n");
+    if (!silent_mode) fprintf(stderr,"Radio is already in boot loader @ 115200\n");
     return 0;
   }
   if ((reply_bytes==3)&&(!strcmp(buffer," \" "))) {
     // Got our characters echoed out to us, so assume that we are in command mode
     // at this speed.
-    fprintf(stderr,"I suspect that we are in command mode. Verifying ...\n");
+    if (!silent_mode)
+      fprintf(stderr,"I suspect that we are in command mode. Verifying ...\n");
 
     if (radio_in_at_command_mode(fd)) {
-      fprintf(stderr,"Yes, we are in command mode at 115200bps.\n");
+      if (!silent_mode) fprintf(stderr,"Yes, we are in command mode at 115200bps.\n");
       detectedspeed=115200;
       bootloadermode=0;
       atmode=1;
@@ -341,7 +344,7 @@ int detect_speed(int fd)
   // At this point, we are either in on-line mode, or talking to the modem at the wrong
   // speed.
   if (!switch_to_at_mode(fd)) {
-    fprintf(stderr,"Yes, we are in command mode at 115200bps.\n");
+    if (!silent_mode) fprintf(stderr,"Yes, we are in command mode at 115200bps.\n");
     detectedspeed=115200;
     bootloadermode=0;
     atmode=1;
@@ -360,7 +363,7 @@ int detect_speed(int fd)
     
     
     if (radio_in_at_command_mode(fd)) {
-      fprintf(stderr,"Yes, we are in command mode at %dbps.\n",speeds[speed]);
+      if (!silent_mode) fprintf(stderr,"Yes, we are in command mode at %dbps.\n",speeds[speed]);
       detectedspeed=speeds[speed];
       bootloadermode=0;
       atmode=1;
@@ -369,7 +372,7 @@ int detect_speed(int fd)
     }
 
     if (!switch_to_at_mode(fd)) {
-      fprintf(stderr,"Yes, we are in command mode at %dbps.\n",speeds[speed]);
+      if (!silent_mode) fprintf(stderr,"Yes, we are in command mode at %dbps.\n",speeds[speed]);
       detectedspeed=speeds[speed];
       bootloadermode=0;
       atmode=1;
@@ -401,8 +404,8 @@ int change_radio_to(int fd,int speed)
   char reply[8192+1];
   int r=0;
 
-  printf("Changing modem to %dbps (original speed was %d)\n",
-	 speed,first_speed);
+  if (!silent_mode) printf("Changing modem to %dbps (original speed was %d)\n",
+			   speed,first_speed);
   
   if (!atmode) {
     if (switch_to_at_mode(fd)) {
@@ -423,24 +426,24 @@ int change_radio_to(int fd,int speed)
   write_radio(fd,(unsigned char *)cmd,strlen(cmd));
   sleep(1);
   r=read(fd,reply,8192); reply[8192]=0; if (r>0&&r<8192) reply[r]=0;
-  printf("%s reply is '%s'\n",cmd,reply);
+  if (!silent_mode) printf("%s reply is '%s'\n",cmd,reply);
 
   cmd="AT&W\r\n";
   write_radio(fd,(unsigned char *)cmd,strlen(cmd));
   sleep(1);
   r=read(fd,reply,8192); reply[8192]=0; if (r>0&&r<8192) reply[r]=0;
-  printf("%s reply is '%s'\n",cmd,reply);
+  if (!silent_mode) printf("%s reply is '%s'\n",cmd,reply);
 
   cmd="ATZ\r\n";	  
   write_radio(fd,(unsigned char *)cmd,strlen(cmd));
   sleep(3);  // Allow time for the radio to restart
   r=read(fd,reply,8192); reply[8192]=0;
   if (r>0&&r<8192) reply[r]=0;
-  printf("ATZ reply is '%s'\n",reply);
+  if (!silent_mode) printf("ATZ reply is '%s'\n",reply);
 
   // Go back to looking for modem at 115200
-  printf("Changed modem to %dbps (original speed was %d)\n",
-	 speed,first_speed);
+  if (!silent_mode) printf("Changed modem to %dbps (original speed was %d)\n",
+			   speed,first_speed);
 
   return 0;
 }

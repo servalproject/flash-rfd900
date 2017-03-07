@@ -126,7 +126,7 @@ int setup_serial_port(int fd, int baud)
    
   set_nonblock(fd);
 
-  fprintf(stderr,"Set serial port to %dbps\n",baud);
+  if (!silent_mode) fprintf(stderr,"Set serial port to %dbps\n",baud);
 
   last_baud=baud;
   
@@ -499,9 +499,7 @@ long long gettime_ms()
 }
 
 int main(int argc,char **argv)
-{
-  printf("Version 20170302.1519.1\n");
-  
+{  
   int fail=0;
   int force=0;
   int verify=0;
@@ -547,6 +545,7 @@ int main(int argc,char **argv)
 		   &&strcasecmp(argv[3],"57600")
 		   )
 	 )) {
+    fprintf(stderr,"Version 20170307.1230.1\n");
     fprintf(stderr,"usage: flash900 <firmware> <serial port> [force|verify|230400|115200|57600]\n");
     exit(-1);
   }
