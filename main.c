@@ -505,7 +505,9 @@ int main(int argc,char **argv)
   int fail=0;
   int force=0;
   int verify=0;
+  int fast=0;
   if (argc>3) {
+    if (!strcasecmp(argv[3],"fast")) { force=1; fast=1; }
     if (!strcasecmp(argv[3],"force")) force=1;
     if (!strcasecmp(argv[3],"verify")) verify=1;
   }
@@ -538,6 +540,7 @@ int main(int argc,char **argv)
   
   if ((argc<3|| argc>4)
       ||(argc==4&&(strcasecmp(argv[3],"force")
+		   &&strcasecmp(argv[3],"fast")
 		   &&strcasecmp(argv[3],"verify")
 		   &&strcasecmp(argv[3],"230400")
 		   &&strcasecmp(argv[3],"115200")
@@ -755,12 +758,15 @@ int main(int argc,char **argv)
       write_to_flash(fd,ihex,1);
       write_time=gettime_ms()-lap_time; lap_time=gettime_ms();
 
-      // Verify that we wrote it correctly
-      unsigned char buffer[65536];
-      printf("Verifying new firmware.\n");
-      read_64kb_flash(fd,buffer);
-      verify_against_buffer(ihex,buffer,1);
+      if (!fast) {
+	// Verify that we wrote it correctly
+	unsigned char buffer[65536];
+	printf("Verifying new firmware.\n");
+	read_64kb_flash(fd,buffer);
+	verify_against_buffer(ihex,buffer,1);
+      }
       verify_time=gettime_ms()-lap_time; lap_time=gettime_ms();
+	
 
     }
 
