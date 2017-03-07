@@ -507,7 +507,7 @@ int eeprom_build_image(char *configuration_directives_normalised,
     if (!silent_mode)
       fprintf(stderr,"Regulatory information text required %d bytes (0x%03x-0x%03x)\n",
 	      (int)bytes_used,0x400,0x400+(int)bytes_used);
-  
+
   // Set format version
   datablock[0x7EF]=0x01;
   // Set other radio fields for use by RFD900 radio (and also for LBARD display)
@@ -746,7 +746,7 @@ int eeprom_program(int argc,char **argv)
     configuration_directives[0]=0;
     if (eeprom_build_image(configuration_directives,
 			   regulatory_information,
-			   radio_parameters,
+			   eeprom_radio_parameters,
 			   datablock)) {
       fprintf(stderr,"Could not build datablock to write to EEPROM.\n");
       exit(-1);
@@ -762,7 +762,7 @@ int eeprom_program(int argc,char **argv)
     directives_from_list();
     if (eeprom_build_image(configuration_directives,
 			   regulatory_information,
-			   radio_parameters,
+			   eeprom_radio_parameters,
 			   datablock)) {
       fprintf(stderr,"Could not build datablock to write to EEPROM.\n");
       exit(-1);
