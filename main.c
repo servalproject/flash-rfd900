@@ -531,9 +531,10 @@ int main(int argc,char **argv)
       debug=1;
     }
 
-  if (!strcmp(argv[1],"eeprom")) {
-    return eeprom_program(argc,argv);
-  }
+  if (argc>1)
+    if (!strcmp(argv[1],"eeprom")) {
+      return eeprom_program(argc,argv);
+    }
   
   
   if ((argc<3|| argc>4)
@@ -545,8 +546,7 @@ int main(int argc,char **argv)
 		   &&strcasecmp(argv[3],"57600")
 		   )
 	 )) {
-    fprintf(stderr,"Version 20170307.1230.1\n");
-    fprintf(stderr,"usage: flash900 <firmware> <serial port> [force|verify|230400|115200|57600]\n");
+    usage();
     exit(-1);
   }
 

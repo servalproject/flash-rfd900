@@ -549,6 +549,9 @@ int eeprom_build_image(char *configuration_directives_normalised,
 
 void usage()
 {
+  fprintf(stderr,"Version 20170307.1230.1\n");
+  fprintf(stderr,"usage: flash900 <firmware> <serial port> [force|verify|230400|115200|57600]\n");
+
   fprintf(stderr,"usage: flash900 eeprom <serial port> [<Mesh Extender configuration directives|\"\"> <alternate regulatory information|\"\"> <frequency> <txpower> <dutycycle> <airspeed> <primary country 2-letter code> <firmware lock (Y|N)> <full list of ISO 2-letter country codes>]\n");
   fprintf(stderr,"       flash900 eeprom <serial port> directives\n");
   fprintf(stderr,"       flash900 eeprom <serial port> directives list>\n");
@@ -857,7 +860,7 @@ int eeprom_write_page(int fd, int address,unsigned char *datablock)
   usleep(1000);
   write_radio(fd,(unsigned char *)"!w",2);
   usleep(71000);
-  
+
   //  snprintf(cmd,1024,"%x!g!E",address);
   //  write_radio(fd,(unsigned char *)cmd,strlen(cmd));
   //  usleep(50000);

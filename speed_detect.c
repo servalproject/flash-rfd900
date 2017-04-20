@@ -313,6 +313,9 @@ int detect_speed(int fd)
   
   write_radio(fd,(unsigned char *)" \" ",3);
   reply_bytes=get_radio_reply(fd,buffer,8192,1);
+  if (reply_bytes>0) dump_bytes("Bootloader sync probe result",
+				(unsigned char *)buffer,reply_bytes);
+  else fprintf(stderr,"No response to bootloader sync probe.\n");
   if ((reply_bytes==4)&&(buffer[2]==INSYNC)&&(buffer[3]==OK)) {
     // Got a valid bootloader string.
     detectedspeed=115200;

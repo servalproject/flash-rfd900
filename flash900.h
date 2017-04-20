@@ -29,7 +29,7 @@ int generate_regulatory_information(char *out,int max_len,char *primary_country,
 				    char *all_countries,
 				    int frequency, int max_txpower,
 				    int duty_cycle);
-
+void usage(void);
 
 // RFD900 boot-loader commands
 #define NOP		0x00
