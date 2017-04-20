@@ -25,7 +25,8 @@ int process_entry(FILE *of,char *country,char *code)
   int len=0;
   int incomment=0;
 
-  for(int i=0;country[i];i++) {  
+  int i;
+  for(i=0;country[i];i++) {  
   
     // Remove HTML comments
     if (!strncmp("&lt;",&country[i],4)) incomment=1;
@@ -84,7 +85,9 @@ int main(int argc,char **argv)
   char country[1024];
   char iso_code[1024];
 
-  for(int i=0;i<r;i++) {
+  int i;
+  
+  for(i=0;i<r;i++) {
     if ((buffer[i]=='\n')||(buffer[i]=='\r')) {
       line[len]=0;
       switch (state) {
