@@ -1,4 +1,4 @@
-COPT=	-g -Wall
+COPT=	-g -Wall -std=gnu99
 
 all:	flash900
 

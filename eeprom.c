@@ -20,7 +20,7 @@ struct radio_parameters {
 struct radio_parameters eeprom_radio_parameters;
 char regulatory_information[16384]="No regulatory information provided.";
 unsigned long regulatory_information_length=
-  strlen("No regulatory information provided.");
+  strlen((const char *)"No regulatory information provided.");
 char configuration_directives[16384]="nodirectives=true\n";
 unsigned long configuration_directives_length=strlen("nodirectives=true\n");
 
