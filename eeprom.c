@@ -342,7 +342,7 @@ int eeprom_parse_output(int fd,unsigned char *datablock, int address)
     if (count>0) offset+=count;
     if (offset>=bytes) break;
     usleep(1000);
-    if ((now-start)>200) break;
+    if ((now-start)>400) break;
   }
   count=offset;
   // now=gettime_ms();
@@ -549,7 +549,7 @@ int eeprom_build_image(char *configuration_directives_normalised,
 
 void usage()
 {
-  fprintf(stderr,"Version 20170421.1030.1\n");
+  fprintf(stderr,"Version 20170421.1557.1\n");
   fprintf(stderr,"usage: flash900 <firmware> <serial port> [force|verify|230400|115200|57600]\n");
 
   fprintf(stderr,"usage: flash900 eeprom <serial port> [<Mesh Extender configuration directives|\"\"> <alternate regulatory information|\"\"> <frequency> <txpower> <dutycycle> <airspeed> <primary country 2-letter code> <firmware lock (Y|N)> <full list of ISO 2-letter country codes>]\n");
@@ -861,6 +861,9 @@ int eeprom_write_page(int fd, int address,unsigned char *datablock)
   write_radio(fd,(unsigned char *)"!w",2);
   usleep(71000);
 
+  // Allow more time since we have slowed down I2C
+  usleep(100000);
+  
   //  snprintf(cmd,1024,"%x!g!E",address);
   //  write_radio(fd,(unsigned char *)cmd,strlen(cmd));
   //  usleep(50000);
