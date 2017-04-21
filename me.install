@@ -1,0 +1,1 @@
+scp -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no flash900.openwrt root@192.168.2.1:/tmp/flash900

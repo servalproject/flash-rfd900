@@ -14,6 +14,7 @@ PKG_SOURCE_VERSION=`grep PKG_SOURCE_VERSION:= Makefile | cut -f2 -d=`
 
 if [ "$PKG_SOURCE_VERSION" == "$commit" ]; then
   echo "OpenWRT package is up to date"
+  PKG_VERSION=`grep PKG_VERSION:= Makefile | cut -f2 -d=`
 else
   PKG_RELEASE=`grep PKG_RELEASE:= Makefile | cut -f2 -d=`
   (( PKG_RELEASE += 1 ))
