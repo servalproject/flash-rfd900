@@ -729,8 +729,9 @@ int eeprom_program(int argc,char **argv)
   }
 
   if (dump) {
+    fprintf(stderr,"Dumping EEPROM contents:\n");
     read_entire_eeprom(fd,readblock);
-    dump_bytes("EEPROM contents",readblock,2048);
+    debug++; dump_bytes("EEPROM contents",readblock,2048); debug--;
     return 0;
   }
   
