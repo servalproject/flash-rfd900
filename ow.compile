@@ -20,7 +20,7 @@ else
 
   cat Makefile | sed -e "s/^PKG_VERSION:=.*$/PKG_VERSION:=${PKG_VERSION}/" -e "s/^PKG_RELEASE:=.*$/PKG_RELEASE=${PKG_RELEASE}/g" -e "s/^PKG_SOURCE_VERSION:=.*$/PKG_SOURCE_VERSION:=${commit}/" > Makefile.tmp
   cat Makefile.tmp
-  mv Makefie.tmp Makefile
+  mv Makefile.tmp Makefile
   git commit -m "Update flash-rfd900" Makefile
 fi
 
