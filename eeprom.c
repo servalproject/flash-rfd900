@@ -549,7 +549,7 @@ int eeprom_build_image(char *configuration_directives_normalised,
 
 void usage()
 {
-  fprintf(stderr,"Version 20170307.1230.1\n");
+  fprintf(stderr,"Version 20170421.1030.1\n");
   fprintf(stderr,"usage: flash900 <firmware> <serial port> [force|verify|230400|115200|57600]\n");
 
   fprintf(stderr,"usage: flash900 eeprom <serial port> [<Mesh Extender configuration directives|\"\"> <alternate regulatory information|\"\"> <frequency> <txpower> <dutycycle> <airspeed> <primary country 2-letter code> <firmware lock (Y|N)> <full list of ISO 2-letter country codes>]\n");
