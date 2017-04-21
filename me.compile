@@ -19,7 +19,7 @@ else
   PKG_RELEASE=`grep PKG_RELEASE:= Makefile | cut -f2 -d=`
   (( PKG_RELEASE += 1 ))
 
-  cat Makefile | sed -e "s/^PKG_VERSION:=.*$/PKG_VERSION:=${PKG_VERSION}/" -e "s/^PKG_RELEASE:=.*$/PKG_RELEASE=${PKG_RELEASE}/g" -e "s/^PKG_SOURCE_VERSION:=.*$/PKG_SOURCE_VERSION:=${commit}/" > Makefile.tmp
+  cat Makefile | sed -e "s/^PKG_VERSION:=.*$/PKG_VERSION:=${PKG_VERSION}/" -e "s/^PKG_RELEASE:=.*$/PKG_RELEASE:=${PKG_RELEASE}/g" -e "s/^PKG_SOURCE_VERSION:=.*$/PKG_SOURCE_VERSION:=${commit}/" > Makefile.tmp
   cat Makefile.tmp
   mv Makefile.tmp Makefile
   git commit -m "Update flash-rfd900" Makefile
