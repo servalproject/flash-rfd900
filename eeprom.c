@@ -582,9 +582,13 @@ int eeprom_program(int argc,char **argv)
   int directive_clear=0;
   char *directive_key=NULL;
   char *directive_value=NULL;
-    
+  int dump=0;
+  
   if ((argc>3)&&(argc<8)) {
-    if (strcasecmp(argv[3],"directives")) { usage(); exit(-1); }
+    if (!strcasecmp(argv[3],"dump")) {
+      dump=1;
+    }
+    else if (strcasecmp(argv[3],"directives")) { usage(); exit(-1); }
     silent_mode=1;
     if (argc>4) {
       if (!strcasecmp(argv[4],"clear")) {
@@ -722,6 +726,12 @@ int eeprom_program(int argc,char **argv)
       fprintf(stderr,"Could not build datablock to write to EEPROM.\n");
       exit(-1);
     }
+  }
+
+  if (dump) {
+    read_entire_eeprom(fd,readblock);
+    dump_bytes("EEPROM contents",readblock,2048);
+    return 0;
   }
   
   if (directive_list) {
