@@ -639,7 +639,7 @@ int eeprom_program(int argc,char **argv)
     exit(-1);
   }
 
-  // XXX - Short-circuit detection with ! command test to save time
+  // We either detect the radio immediately, or give up for EEPROM commands.
   {
     setup_serial_port(fd,230400);
     char buffer[1024];
@@ -651,16 +651,9 @@ int eeprom_program(int argc,char **argv)
     int count=get_radio_reply(fd,buffer,1024,0);
     if (memmem(buffer,count,"EPRADDR=$0",10)) {
       if (!silent_mode) fprintf(stderr,"Radio is ready.\n");
-    } else {
-      if (detect_speed(fd)) {
-	fprintf(stderr,"Could not detect radio speed and mode. Sorry.\n");
-	exit(-1);
-      }
-      if (atmode)
-	if (switch_to_online_mode(fd)) {
-	  fprintf(stderr,"Could not switch to online mode.\n");
-	  exit(-1);
-	}      
+    } else {     
+      fprintf(stderr,"RFD900+ undetected.\n");
+      exit(-1);
     }
   }
 
