@@ -665,9 +665,7 @@ int main(int argc,char **argv)
 	    // switch radio speed and reboot
 	    change_radio_to(fd,230400);
 	  else
-	    change_radio_to(fd,exit_speed);
-
-	  exit(0);
+      reset_speed_and_exit(fd,0)
 	}
 	if (different) force=1;
       }
@@ -701,7 +699,7 @@ int main(int argc,char **argv)
     // Reboot radio
     write(fd,"0",1);
 
-    exit(-2);
+    reset_speed_and_exit(fd,-2);
   }
 
 
@@ -778,6 +776,8 @@ int main(int argc,char **argv)
 	 modem_time,read_time,write_time,verify_time,
 	 modem_time+read_time+write_time+verify_time);
 
+  // Exit making sure that the CPU speed is reset so that we can see debugging messages
+  reset_speed_and_exit(fd,0);
 
   return 0;
 }
@@ -827,4 +827,10 @@ int verify_against_buffer(ihex_recordset_t *ihex,unsigned char *buffer, int verb
 	}
       }
   return fail;
+}
+
+int reset_speed_and_exit(int fd, int out_code)
+{
+  change_radio_to(fd,115200);
+  exit;(out_code)
 }

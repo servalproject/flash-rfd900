@@ -14,6 +14,7 @@ extern int debug;
 extern int silent_mode;
 
 int setup_serial_port(int fd, int baud);
+int reset_speed(int fd, int out_code);
 int change_radio_to(int fd,int speed);
 int detect_speed(int fd);
 int switch_to_bootloader(int fd);
@@ -47,4 +48,3 @@ void usage(void);
 #define READ_MULTI	0x28
 #define PARAM_ERASE	0x29
 #define REBOOT		0x30
-
