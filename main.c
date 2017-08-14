@@ -67,7 +67,7 @@ int setup_serial_port(int fd, int baud)
   struct termios t;
 
   if (tcgetattr(fd, &t)) return -1;
-    
+
   speed_t baud_rate;
   switch(baud){
   case 0: baud_rate = B0; break;
@@ -92,7 +92,7 @@ int setup_serial_port(int fd, int baud)
   case 230400: baud_rate = B230400; break;
   }
 
-  if (cfsetospeed(&t, baud_rate)) return -1;    
+  if (cfsetospeed(&t, baud_rate)) return -1;
   if (cfsetispeed(&t, baud_rate)) return -1;
 
   // 8N1
@@ -104,13 +104,13 @@ int setup_serial_port(int fd, int baud)
   t.c_lflag &= ~(ICANON | ISIG | IEXTEN | ECHO | ECHOE);
   /* Noncanonical mode, disable signals, extended
      input processing, and software flow control and echoing */
-  
+
   t.c_iflag &= ~(BRKINT | ICRNL | IGNBRK | IGNCR | INLCR |
 		 INPCK | ISTRIP | IXON | IXOFF | IXANY | PARMRK);
   /* Disable special handling of CR, NL, and BREAK.
      No 8th-bit stripping or parity error handling.
      Disable START/STOP output flow control. */
-  
+
   // Enable/disable CTS/RTS flow control
 #ifndef CNEW_RTSCTS
   t.c_cflag &= ~CRTSCTS;
@@ -123,13 +123,13 @@ int setup_serial_port(int fd, int baud)
 
   if (tcsetattr(fd, TCSANOW, &t))
     return -1;
-   
+
   set_nonblock(fd);
 
   if (!silent_mode) fprintf(stderr,"Set serial port to %dbps\n",baud);
 
   last_baud=baud;
-  
+
   return 0;
 }
 
@@ -148,7 +148,7 @@ int next_char(int fd)
 	last_write_time=0;
 	// fprintf(stderr,"serial latency = %lldms\n",latency);
       }
-      
+
       return buffer[0];
     } else { usleep(1000); w++; }
   }
@@ -211,33 +211,33 @@ void request_flash_read(int fd,unsigned char *buffer,int length)
   write(fd,cmd,3);
   last_write_time=gettime_ms();
 }
- 
+
 void flash_read_requested_bytes(int fd,unsigned char *buffer, int length)
 {
   int i;
-  
+
   for(i=0;i<length;i++) {
     buffer[i]=next_char(fd);
   }
   expect_insync(fd);
-  expect_ok(fd);  
+  expect_ok(fd);
 }
- 
+
 void read_flash(int fd,unsigned char *buffer,int length)
 {
   request_flash_read(fd,buffer,length);
-  
+
   int i;
 
   for(i=0;i<length;i++) {
     buffer[i]=next_char(fd);
   }
   expect_insync(fd);
-  expect_ok(fd);  
+  expect_ok(fd);
 }
 
 
- 
+
 void write_flash_async(int fd,unsigned char *buffer,int length)
 {
   unsigned char cmd[8+length];
@@ -253,7 +253,7 @@ void write_flash(int fd,unsigned char *buffer,int length)
 {
   write_flash_async(fd,buffer,length);
   expect_insync(fd);
-  expect_ok(fd);  
+  expect_ok(fd);
 }
 
 // Bulk read all 64KB of flash for quick comparison, and without USB serial
@@ -309,7 +309,7 @@ void assemble_ihex(ihex_recordset_t *ihex, unsigned char buffer[65536])
 {
   int i,j;
   for(i=0;i<65535;i++) buffer[i]=0xff;
-  
+
   for(i=0;i<ihex->ihrs_count;i++)
     if (ihex->ihrs_records[i].ihr_type==0x04) {
       // XXX Set upper 16-bits of address
@@ -337,27 +337,27 @@ ihex_recordset_t *load_firmware(char *base,int id,int freq)
 {
   char filename[1024];
   snprintf(filename,1024,"%s-%02X-%02X.ihx",base,id,freq);
-  
+
   printf("Board id = $%02x, freq = $%02x : Will load firmware from '%s'\n",
 	 id,freq,filename);
-  
+
   if (id==0x82) {
     twentyfourbitaddressing=1;
     printf("Using 24-bit addressing with this board.\n");
   }
-  
+
   ihex_recordset_t *ihex=ihex_rs_from_file(filename);
   if (!ihex) {
     fprintf(stderr,"Could not read intel hex records from '%s'\n",filename);
     return NULL;
   }
-    
+
   printf("Read %d IHEX records from firmware file\n",ihex->ihrs_count);
   ihex_aggregate_records(ihex);
   printf("(%d records remain after aggregation)\n",ihex->ihrs_count);
-  
-  // Sort IHEX records into ascending address order so that when we flash 
-  // them we don't mess things up by writing the flash data in the wrong order 
+
+  // Sort IHEX records into ascending address order so that when we flash
+  // them we don't mess things up by writing the flash data in the wrong order
   qsort(ihex->ihrs_records,ihex->ihrs_count,sizeof(ihex_record_t),
 	compare_ihex_record);
 
@@ -369,7 +369,7 @@ int calculate_hash(unsigned char buffer[65536],unsigned int checksums[64],
 		   unsigned int *h1, unsigned int *h2)
 {
   int i;
-  
+
   uint32_t hash1=1,hash2=2;
   uint8_t hibit;
   uint8_t	j=0;
@@ -378,7 +378,7 @@ int calculate_hash(unsigned char buffer[65536],unsigned int checksums[64],
     hash1 = hash1 << 1;
     hash1 = hash1 ^ hibit;
     hash1 = hash1 ^ buffer[i];
-    
+
     hash2 = hash2 + buffer[i];
 
     if((i&0x3ff)==0x0) {
@@ -391,12 +391,12 @@ int calculate_hash(unsigned char buffer[65536],unsigned int checksums[64],
   }
 
   for(j=0;j<64;j++) checksums[j] &= 0xffff;
-  
+
   printf("HASH=%08x+%08x\n",hash1,hash2);
 
   *h1=hash1;
   *h2=hash2;
-  
+
   return 0;
 }
 
@@ -423,7 +423,7 @@ int write_to_flash(int fd,ihex_recordset_t *ihex,int writeP)
   if (writeP) max=64;
 
   int address_base=0x00000000;
-  
+
   printf("max=%d\n",max);
 
   int i;
@@ -444,7 +444,7 @@ int write_to_flash(int fd,ihex_recordset_t *ihex,int writeP)
 		  ihex->ihrs_records[i].ihr_address,
 		  ihex->ihrs_records[i].ihr_address+ihex->ihrs_records[i].ihr_length);
 	}
-	
+
 	int j;
 	// write 32 bytes at a time.
 	// (but do all writing before verification, so that we avoid additional
@@ -463,12 +463,12 @@ int write_to_flash(int fd,ihex_recordset_t *ihex,int writeP)
 		// printf("  clipping read from $%02x\n",length);
 		length=ihex->ihrs_records[i].ihr_length-j;
 	      }
-	      
+
 	      printf("\rWrite $%04x - $%04x (len=$%02x)     \r",
 		     ihex->ihrs_records[i].ihr_address+j,
 		     ihex->ihrs_records[i].ihr_address+j+length-1,length);
 	      fflush(stdout);
-	      
+
 	      // Write to flash
 	      write_flash_async(fd,&ihex->ihrs_records[i].ihr_data[j],length);
 	      expect_insync(fd); expect_ok(fd);
@@ -486,7 +486,7 @@ int write_to_flash(int fd,ihex_recordset_t *ihex,int writeP)
   }
   return 0;
 }
-  
+
 long long gettime_ms()
 {
   struct timeval nowtv;
@@ -499,7 +499,7 @@ long long gettime_ms()
 }
 
 int main(int argc,char **argv)
-{  
+{
   int fail=0;
   int force=0;
   int verify=0;
@@ -509,7 +509,7 @@ int main(int argc,char **argv)
     if (!strcasecmp(argv[3],"force")) force=1;
     if (!strcasecmp(argv[3],"verify")) verify=1;
   }
-  
+
   int start=0x0400;
   int end=0xfc00;
   int id=0xff;
@@ -535,8 +535,8 @@ int main(int argc,char **argv)
     if (!strcmp(argv[1],"eeprom")) {
       return eeprom_program(argc,argv);
     }
-  
-  
+
+
   if ((argc<3|| argc>4)
       ||(argc==4&&(strcasecmp(argv[3],"force")
 		   &&strcasecmp(argv[3],"fast")
@@ -569,9 +569,9 @@ int main(int argc,char **argv)
     // Try using !Cup!B command to drop direct to bootloader
     try_bang_B(fd);
   }
-  
 
-  
+
+
   if (detect_speed(fd)) {
     fprintf(stderr,"Could not detect radio speed and mode. Sorry.\n");
     exit(-1);
@@ -579,22 +579,22 @@ int main(int argc,char **argv)
 
   // Radio is now at detectedspeed bps.
   fprintf(stderr,"Detected radio speed and mode.\n");
-             
-  unsigned char cmd[260]; 
+
+  unsigned char cmd[260];
 
   if (bootloadermode)
     printf("Detected RFD900 is already in bootloader -- we have no choice but to reflash to exit boot loader mode.\n");
-  else 
+  else
     {
       if (atmode) {
 	// Switch to online mode to ask the radio what firmware version it has
 	switch_to_online_mode(fd);
       }
-      
+
       printf("Checking if radio supports !F for fast ID of firmware\n");
       unsigned char reply[8193];
       unsigned int checksum[64];
-      
+
       // clear out any queued data first
       int r=read(fd,reply,8192); reply[8192]=0;
       // send !F
@@ -630,19 +630,19 @@ int main(int argc,char **argv)
 		 &checksum[0x3c],&checksum[0x3d],&checksum[0x3e],&checksum[0x3f]
 		 );
       printf("Found %d fields @ %dbps.\n",fields,detectedspeed);
-      
+
       if (fields==(5+64)) {
 	printf("Successfully parsed HASH response.\n");
 	if (first_speed==-1) first_speed=detectedspeed;
-	
+
 	ihex=load_firmware(argv[1],id,freq);
-	
+
 	unsigned int newhash1,newhash2;
 	unsigned char ibuffer[65536];
 	unsigned int ichecksums[64];
 	assemble_ihex(ihex,ibuffer);
 	calculate_hash(ibuffer,ichecksums,0x400,0xf800,&newhash1,&newhash2);
-	
+
 	// Only check the first 60KB, as the rest is bootloader and other stuff
 	// that we can't rely upon.  This leaves the chance of some possible changes
 	// not getting picked up -- however, since this method only applies to
@@ -661,12 +661,12 @@ int main(int argc,char **argv)
 	if ((!different)&&(!force)) {
 	  printf("Flash ROM matched via checksum: nothing to do.\n");
 	  // ... except to make sure that the modem is set back to default speed
-	  if (exit_speed<=0) 
-	    // switch radio speed and reboot	      
+	  if (exit_speed<=0)
+	    // switch radio speed and reboot
 	    change_radio_to(fd,230400);
 	  else
 	    change_radio_to(fd,exit_speed);
-	    
+
 	  exit(0);
 	}
 	if (different) force=1;
@@ -675,56 +675,56 @@ int main(int argc,char **argv)
       if (switch_to_bootloader(fd)) {
 	fprintf(stderr,"Failed to enter boot loader.\n");
 	exit(-1);
-      }	
+      }
     }
 
   modem_time=gettime_ms()-lap_time; lap_time=gettime_ms();
-  
+
   // Radio has incorrect or unknown firmware version, and is already in bootloader
   // mode for us.  Proceed with updating it.
-  
+
   // ask for board ID
   cmd[0]=GET_DEVICE;
   cmd[1]=EOC;
   write(fd,cmd,2);
-    
+
   id = next_char(fd);
   freq = next_char(fd);
   expect_insync(fd);
   expect_ok(fd);
-    
+
   ihex=load_firmware(argv[1],id,freq);
   if (!ihex) {
 
     fprintf(stderr,"Sorry, I don't have firmware for your model of radio.  Your radio is probably stuck in bootloader mode now, until you find another way to update it.\n");
-      
+
     // Reboot radio
     write(fd,"0",1);
-      
+
     exit(-2);
   }
-        
-    
+
+
   // Reset parameters
   cmd[0]=PARAM_ERASE;
   cmd[1]=EOC;
   write(fd,cmd,2);
   expect_insync(fd);
   expect_ok(fd);
-    
+
   printf("Erased parameters.\n");
-    
+
   // Program all parts of the firmware and verify that that got written
   printf("Checking if the radio already has this version of firmware...\n");
-    
+
   /*
     XXX - We only support 64KB of flash, even though the RFD900+ has 128KB
   */
-    
+
   if (!force) {
     // read flash and compare with ihex records
     unsigned char buffer[65536];
-    printf("Bulk reading from flash...\n");    
+    printf("Bulk reading from flash...\n");
     read_64kb_flash(fd,buffer);
     read_time=gettime_ms()-lap_time; lap_time=gettime_ms();
     // write_64kb("fromradio.bin",buffer);
@@ -765,7 +765,7 @@ int main(int argc,char **argv)
 	verify_against_buffer(ihex,buffer,1);
       }
       verify_time=gettime_ms()-lap_time; lap_time=gettime_ms();
-	
+
 
     }
 
@@ -777,8 +777,8 @@ int main(int argc,char **argv)
   printf("Time breakdown: \n  Modem control = %lldms,  flash read = %lldms,\n  flash write = %lldms,  flash verify =  %lldms.\n  TOTAL = %lld ms.\n",
 	 modem_time,read_time,write_time,verify_time,
 	 modem_time+read_time+write_time+verify_time);
-	 
-  
+
+
   return 0;
 }
 
@@ -796,13 +796,13 @@ int verify_against_buffer(ihex_recordset_t *ihex,unsigned char *buffer, int verb
   // allow reading of FLASH memory without entering the bootloader.
 
   int fail=0;
-  
+
   for(i=0;i<ihex->ihrs_count;i++)
     if (ihex->ihrs_records[i].ihr_type==0x00)
       // if (ihex->ihrs_records[i].ihr_address<0xF7FE)
       {
 	if (fail&&(verbose<2)) break;
-	
+
 	if (memcmp(&buffer[ihex->ihrs_records[i].ihr_address],
 		   ihex->ihrs_records[i].ihr_data,
 		   ihex->ihrs_records[i].ihr_length)) {
