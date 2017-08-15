@@ -832,5 +832,5 @@ int verify_against_buffer(ihex_recordset_t *ihex,unsigned char *buffer, int verb
 int reset_speed_and_exit(int fd, int out_code)
 {
   change_radio_to(fd,115200);
-  exit;(out_code)
+  exit(out_code);
 }
