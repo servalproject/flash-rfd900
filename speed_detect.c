@@ -358,7 +358,7 @@ int detect_speed(int fd)
   // We now know that we are not at 115,200bps, so try other likely speeds.
   // For these other speeds, we need only check for on-line and AT mode.
   int speed;
-  int speeds[]={230400,57600,38400,19200,9600,2400,1200,-1};
+  int speeds[]={230400,57600,-1};
   for(speed=0;speeds[speed]>0;speed++) {    
     setup_serial_port(fd,speeds[speed]);
 
