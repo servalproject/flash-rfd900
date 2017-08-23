@@ -665,7 +665,8 @@ int main(int argc,char **argv)
 	    // switch radio speed and reboot
 	    change_radio_to(fd,230400);
 	  else
-      reset_speed_and_exit(fd,0);
+      	reset_speed_and_exit(fd,0);
+	exit(0);
 	}
 	if (different) force=1;
       }

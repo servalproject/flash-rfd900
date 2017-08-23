@@ -14,7 +14,7 @@ extern int debug;
 extern int silent_mode;
 
 int setup_serial_port(int fd, int baud);
-int reset_speed(int fd, int out_code);
+int reset_speed_and_exit(int fd, int out_code);
 int change_radio_to(int fd,int speed);
 int detect_speed(int fd);
 int switch_to_bootloader(int fd);
