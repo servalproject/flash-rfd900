@@ -531,6 +531,10 @@ int main(int argc,char **argv)
       debug=1;
     }
 
+  if (argc==4)
+    if (!strcmp(argv[1],"linkmon"))
+      return link_debug(argv[2],argv[3]);
+  
   if (argc>1)
     if (!strcmp(argv[1],"eeprom")) {
       return eeprom_program(argc,argv);
@@ -832,6 +836,6 @@ int verify_against_buffer(ihex_recordset_t *ihex,unsigned char *buffer, int verb
 
 int reset_speed_and_exit(int fd, int out_code)
 {
-  change_radio_to(fd,115200);
+  setup_serial_port(fd,115200);
   exit(out_code);
 }

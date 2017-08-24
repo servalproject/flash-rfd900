@@ -550,7 +550,7 @@ int eeprom_build_image(char *configuration_directives_normalised,
 
 void usage()
 {
-  fprintf(stderr,"Version 20170421.1557.1\n");
+  fprintf(stderr,"Version 20170824.1145.1\n");
   fprintf(stderr,"usage: flash900 <firmware> <serial port> [force|verify|230400|115200|57600]\n");
 
   fprintf(stderr,"usage: flash900 eeprom <serial port> [<Mesh Extender configuration directives|\"\"> <alternate regulatory information|\"\"> <frequency> <txpower> <dutycycle> <airspeed> <primary country 2-letter code> <firmware lock (Y|N)> <full list of ISO 2-letter country codes>]\n");
@@ -560,6 +560,7 @@ void usage()
   fprintf(stderr,"       flash900 eeprom <serial port> directives get <key>\n");
   fprintf(stderr,"       flash900 eeprom <serial port> directives del <key>\n");
   fprintf(stderr,"       flash900 eeprom <serial port> directives set <key> <value>\n");
+  fprintf(stderr,"       flash900 linkmon <serial port 1> <serial port 2>\n");
   fprintf(stderr," e.g.: flash900 eeprom /dev/cu.usbserial-AARDVARK \"OTABID=918f8a6684c861f68c1f6c468c4c684\\nMESHEXTENDERNAME=Adelaide1\\nLATITUDE=-35\\nLONGITUDE=+138\\n\" \"\" 923000000 24 100 128 AU N AU,NZ,US,CA,VU\n");
   fprintf(stderr," e.g.: flash900 eeprom /dev/cu.usbserial-AARDVARK\n");
   fprintf(stderr," e.g.: flash900 eeprom /dev/cu.usbserial-AARDVARK directive get OTABID\n");

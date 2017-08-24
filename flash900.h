@@ -32,6 +32,9 @@ int generate_regulatory_information(char *out,int max_len,char *primary_country,
 				    int duty_cycle);
 void usage(void);
 
+int link_debug(char *port1,char *port2);
+
+
 // RFD900 boot-loader commands
 #define NOP		0x00
 #define OK		0x10
