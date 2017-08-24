@@ -18,11 +18,35 @@
 #include <string.h>
 #include <strings.h>
 #include <stdlib.h>
-#include "cintelhex.h"
+#include <errno.h>
 #include "flash900.h"
 
 char name1[1024];
 char name2[1024];
+
+int output_text_from(char *name,unsigned char *buffer)
+{
+  int i;
+  int start_of_line=1;
+  for(i=0;buffer[i];i++) {
+    if (buffer[i]=='\r'||buffer[i]=='\n')
+      {
+	if (start_of_line||(buffer[i]=='\n')) {
+	  if (buffer[i-1]=='\n') printf(">>> %s:",name);
+	  else printf("\n");
+	}
+	start_of_line=1;
+      }
+    else {
+      if (start_of_line) printf(">>> %s: ",name);
+      start_of_line=0;
+      if (buffer[i]!=0x08) printf("%c",buffer[i]); else printf("<BACKSPACE>");
+    }
+  }
+  if (!start_of_line) printf("\n");
+  else printf(">>> %s:\n",name);
+  return 0;
+}
 
 int relay_between(int fd1,int fd2,char *name)
 {
@@ -30,7 +54,21 @@ int relay_between(int fd1,int fd2,char *name)
   int r;
   r=read(fd1,buffer,8192);
   if (r>0) {
-    dump_bytes(name,buffer,r);
+    int non_printable=0;
+    int i;
+    for(i=0;i<r;i++) {
+      if (buffer[i]<0x20&&(buffer[i]!=0x0a&&buffer[i]!=0x09&&buffer[i]!=0x0d&&buffer[i]!=0x08&&buffer[i]!=0x07))
+	non_printable++;
+      if (buffer[i]>0x7d) non_printable++;
+    }
+
+    if (non_printable) {
+      debug=1;
+      dump_bytes(name,buffer,r);
+    } else {
+      buffer[r]=0;
+      output_text_from(name,buffer);
+    }
     
     write(fd2,buffer,r);
   }
@@ -65,12 +103,17 @@ int link_debug(char *port1,char *port2)
   // XXX - Need to make speed change and follow based on what we see
   setup_serial_port(fd1,115200);
   setup_serial_port(fd2,115200);
+
+  int count=0;
   
   while(1) {
     relay_between(fd1,fd2,name1);
     relay_between(fd2,fd1,name2);
     
     usleep(1000);
+    count++; if (count>1000) {
+      count=0;
+    }
   }
   
   
