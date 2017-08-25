@@ -498,32 +498,113 @@ long long gettime_ms()
   return nowtv.tv_sec * 1000LL + nowtv.tv_usec / 1000;
 }
 
+int fail=0;
+int force=0;
+int verify=0;
+int fast=0;
+
+int start=0x0400;
+int end=0xfc00;
+int id=0xff;
+int freq=0xff;
+unsigned int hash1=1;
+ihex_recordset_t *ihex=NULL;
+
+int exit_speed=0;
+
+long long lap_time=0;
+long long read_time=0;
+long long write_time=0;
+long long verify_time=0;
+long long modem_time=0;
+
+int check_bang_f_reply(int fd,unsigned char *reply,int r,char *firmwarefile)
+{
+  int ret_code=0;
+  unsigned int checksum[64];
+  
+  int fields
+    = sscanf((const char *)reply,"HASH=%x:%x:%x:%x:%x,"
+	     "%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,"
+	     "%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,"
+	     "%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,"
+	     "%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x",
+	     &id,&freq,&start,&end,&hash1,
+	     &checksum[0x00],&checksum[0x01],&checksum[0x02],&checksum[0x03],
+	     &checksum[0x04],&checksum[0x05],&checksum[0x06],&checksum[0x07],
+	     &checksum[0x08],&checksum[0x09],&checksum[0x0a],&checksum[0x0b],
+	     &checksum[0x0c],&checksum[0x0d],&checksum[0x0e],&checksum[0x0f],
+	     &checksum[0x10],&checksum[0x11],&checksum[0x12],&checksum[0x13],
+	     &checksum[0x14],&checksum[0x15],&checksum[0x16],&checksum[0x17],
+	     &checksum[0x18],&checksum[0x19],&checksum[0x1a],&checksum[0x1b],
+	     &checksum[0x1c],&checksum[0x1d],&checksum[0x1e],&checksum[0x1f],
+	     &checksum[0x20],&checksum[0x21],&checksum[0x22],&checksum[0x23],
+	     &checksum[0x24],&checksum[0x25],&checksum[0x26],&checksum[0x27],
+	     &checksum[0x28],&checksum[0x29],&checksum[0x2a],&checksum[0x2b],
+	     &checksum[0x2c],&checksum[0x2d],&checksum[0x2e],&checksum[0x2f],
+	     &checksum[0x30],&checksum[0x31],&checksum[0x32],&checksum[0x33],
+	     &checksum[0x34],&checksum[0x35],&checksum[0x36],&checksum[0x37],
+	     &checksum[0x38],&checksum[0x39],&checksum[0x3a],&checksum[0x3b],
+	     &checksum[0x3c],&checksum[0x3d],&checksum[0x3e],&checksum[0x3f]
+	     );
+  printf("Found %d fields @ %dbps.\n",fields,detectedspeed);
+  
+  if (fields==(5+64)) {
+    printf("Successfully parsed HASH response.\n");
+    if (first_speed==-1) first_speed=detectedspeed;
+    ret_code=1;
+    
+    ihex=load_firmware(firmwarefile,id,freq);
+    
+    unsigned int newhash1,newhash2;
+    unsigned char ibuffer[65536];
+    unsigned int ichecksums[64];
+    assemble_ihex(ihex,ibuffer);
+    calculate_hash(ibuffer,ichecksums,0x400,0xf800,&newhash1,&newhash2);
+    
+    // Only check the first 60KB, as the rest is bootloader and other stuff
+    // that we can't rely upon.  This leaves the chance of some possible changes
+    // not getting picked up -- however, since this method only applies to
+    // the Serval Project, we can manage that risk there.
+    // Don't check the first 4KB: It changes (is this where parameters get stored?)
+    int different=0;
+    int i;
+    for(i=1;i<60;i++) {
+      if (checksum[i]!=ichecksums[i]) {
+	printf("Checksum for $%04x - $%04x does not match ($%04x vs $%04x)\n",
+	       i*0x400,(i+1)*0x400-1,checksum[i],ichecksums[i]);
+	different++;
+      }
+    }
+    
+    if ((!different)&&(!force)) {
+      printf("Flash ROM matched via checksum: nothing to do.\n");
+      // ... except to make sure that the modem is set back to default speed
+      if (exit_speed<=0)
+	// switch radio speed and reboot
+	change_radio_to(fd,230400);
+      else
+      	reset_speed_and_exit(fd,0);
+      exit(0);
+    }
+    if (different) force=1;
+  }
+
+  return ret_code;
+}
+
 int main(int argc,char **argv)
 {
-  int fail=0;
-  int force=0;
-  int verify=0;
-  int fast=0;
+  int r;
+  unsigned char reply[8192];
+  
   if (argc>3) {
     if (!strcasecmp(argv[3],"fast")) { force=1; fast=1; }
     if (!strcasecmp(argv[3],"force")) force=1;
     if (!strcasecmp(argv[3],"verify")) verify=1;
   }
 
-  int start=0x0400;
-  int end=0xfc00;
-  int id=0xff;
-  int freq=0xff;
-  unsigned int hash1=1;
-  ihex_recordset_t *ihex=NULL;
-
-  int exit_speed=0;
-
-  long long lap_time=gettime_ms();
-  long long read_time=0;
-  long long write_time=0;
-  long long verify_time=0;
-  long long modem_time=0;
+  lap_time=gettime_ms();
 
   if ((argc>4)&&(!strcasecmp(argv[4],"debug")))
     {
@@ -574,12 +655,18 @@ int main(int argc,char **argv)
     try_bang_B(fd);
   }
 
-
-
-  if (detect_speed(fd)) {
-    fprintf(stderr,"Could not detect radio speed and mode. Sorry.\n");
-    exit(-1);
-  }
+  // Make common case fast: Modem is at 230400, online, and supports !F
+  write(fd,"!F",2);
+  usleep(200000);
+  r=read(fd,reply,8192); reply[8192]=0;
+  if (r>0&&r<8192) reply[r]=0;
+  if (!check_bang_f_reply(fd,reply,r,argv[1]))
+    {
+      if (detect_speed(fd)) {
+	fprintf(stderr,"Could not detect radio speed and mode. Sorry.\n");
+	exit(-1);
+      }
+    }
 
   // Radio is now at detectedspeed bps.
   fprintf(stderr,"Detected radio speed and mode.\n");
@@ -597,7 +684,6 @@ int main(int argc,char **argv)
 
       printf("Checking if radio supports !F for fast ID of firmware\n");
       unsigned char reply[8193];
-      unsigned int checksum[64];
 
       // clear out any queued data first
       int r=read(fd,reply,8192); reply[8192]=0;
@@ -609,72 +695,8 @@ int main(int argc,char **argv)
       printf("!F reply is '%s'\n",reply);
       // if !F we are probably in command mode
       // if HASH=xx:xx:xxxx:xxxx:xxxx+xxxx, then firmware supports function
-      int fields
-	= sscanf((const char *)reply,"HASH=%x:%x:%x:%x:%x,"
-		 "%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,"
-		 "%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,"
-		 "%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,"
-		 "%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x,%x",
-		 &id,&freq,&start,&end,&hash1,
-		 &checksum[0x00],&checksum[0x01],&checksum[0x02],&checksum[0x03],
-		 &checksum[0x04],&checksum[0x05],&checksum[0x06],&checksum[0x07],
-		 &checksum[0x08],&checksum[0x09],&checksum[0x0a],&checksum[0x0b],
-		 &checksum[0x0c],&checksum[0x0d],&checksum[0x0e],&checksum[0x0f],
-		 &checksum[0x10],&checksum[0x11],&checksum[0x12],&checksum[0x13],
-		 &checksum[0x14],&checksum[0x15],&checksum[0x16],&checksum[0x17],
-		 &checksum[0x18],&checksum[0x19],&checksum[0x1a],&checksum[0x1b],
-		 &checksum[0x1c],&checksum[0x1d],&checksum[0x1e],&checksum[0x1f],
-		 &checksum[0x20],&checksum[0x21],&checksum[0x22],&checksum[0x23],
-		 &checksum[0x24],&checksum[0x25],&checksum[0x26],&checksum[0x27],
-		 &checksum[0x28],&checksum[0x29],&checksum[0x2a],&checksum[0x2b],
-		 &checksum[0x2c],&checksum[0x2d],&checksum[0x2e],&checksum[0x2f],
-		 &checksum[0x30],&checksum[0x31],&checksum[0x32],&checksum[0x33],
-		 &checksum[0x34],&checksum[0x35],&checksum[0x36],&checksum[0x37],
-		 &checksum[0x38],&checksum[0x39],&checksum[0x3a],&checksum[0x3b],
-		 &checksum[0x3c],&checksum[0x3d],&checksum[0x3e],&checksum[0x3f]
-		 );
-      printf("Found %d fields @ %dbps.\n",fields,detectedspeed);
-
-      if (fields==(5+64)) {
-	printf("Successfully parsed HASH response.\n");
-	if (first_speed==-1) first_speed=detectedspeed;
-
-	ihex=load_firmware(argv[1],id,freq);
-
-	unsigned int newhash1,newhash2;
-	unsigned char ibuffer[65536];
-	unsigned int ichecksums[64];
-	assemble_ihex(ihex,ibuffer);
-	calculate_hash(ibuffer,ichecksums,0x400,0xf800,&newhash1,&newhash2);
-
-	// Only check the first 60KB, as the rest is bootloader and other stuff
-	// that we can't rely upon.  This leaves the chance of some possible changes
-	// not getting picked up -- however, since this method only applies to
-	// the Serval Project, we can manage that risk there.
-	// Don't check the first 4KB: It changes (is this where parameters get stored?)
-	int different=0;
-	int i;
-	for(i=1;i<60;i++) {
-	  if (checksum[i]!=ichecksums[i]) {
-	    printf("Checksum for $%04x - $%04x does not match ($%04x vs $%04x)\n",
-		   i*0x400,(i+1)*0x400-1,checksum[i],ichecksums[i]);
-	    different++;
-	  }
-	}
-
-	if ((!different)&&(!force)) {
-	  printf("Flash ROM matched via checksum: nothing to do.\n");
-	  // ... except to make sure that the modem is set back to default speed
-	  if (exit_speed<=0)
-	    // switch radio speed and reboot
-	    change_radio_to(fd,230400);
-	  else
-      	reset_speed_and_exit(fd,0);
-	exit(0);
-	}
-	if (different) force=1;
-      }
-
+      check_bang_f_reply(fd,reply,r,argv[1]);
+      
       if (switch_to_bootloader(fd)) {
 	fprintf(stderr,"Failed to enter boot loader.\n");
 	exit(-1);

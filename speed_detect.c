@@ -407,6 +407,8 @@ int change_radio_to(int fd,int speed)
   char reply[8192+1];
   int r=0;
 
+  if (speed==first_speed) return 0;
+  
   if (!silent_mode) printf("Changing modem to %dbps (original speed was %d)\n",
 			   speed,first_speed);
   

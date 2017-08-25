@@ -70,7 +70,7 @@ int relay_between(int fd1,int fd2,char *name)
       output_text_from(name,buffer);
     }
     
-    write(fd2,buffer,r);
+    write(fd1,buffer,r);
   }
   return 0;
 }
@@ -101,8 +101,8 @@ int link_debug(char *port1,char *port2)
   }
 
   // XXX - Need to make speed change and follow based on what we see
-  setup_serial_port(fd1,115200);
-  setup_serial_port(fd2,115200);
+  setup_serial_port(fd1,230400);
+  setup_serial_port(fd2,230400);
 
   int count=0;
   
