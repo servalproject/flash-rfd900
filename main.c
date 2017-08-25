@@ -656,6 +656,8 @@ int main(int argc,char **argv)
   }
 
   // Make common case fast: Modem is at 230400, online, and supports !F
+  detectedspeed=230400;
+  setup_serial_port(fd,230400);  
   write(fd,"!F",2);
   usleep(200000);
   r=read(fd,reply,8192); reply[8192]=0;
